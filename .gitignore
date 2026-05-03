@@ -46,3 +46,5 @@ web-build/
 *_data/
 pgdata/
 neo4jdata/
+
+CLAUDE.md

@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: promotion-service
+  namespace: circleguard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: promotion-service
+  template:
+    metadata:
+      labels:
+        app: promotion-service
+    spec:
+      # Espera a Neo4j y Kafka antes de arrancar.
+      # Neo4jSchemaConfig tiene @PostConstruct que conecta a bolt en startup.
+      # SurveyListener tiene @KafkaListener que falla sin broker disponible.
+      initContainers:
+        - name: wait-for-neo4j
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command: ['sh', '-c', 'until nc -z neo4j-svc 7687; do echo "Waiting for Neo4j bolt..."; sleep 5; done; echo "Neo4j is ready."']
+        - name: wait-for-kafka
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command: ['sh', '-c', 'until nc -z kafka-svc 9092; do echo "Waiting for Kafka..."; sleep 5; done; echo "Kafka is ready."']
+        - name: wait-for-postgres
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command: ['sh', '-c', 'until nc -z postgres-svc 5432; do echo "Waiting for PostgreSQL..."; sleep 5; done; echo "PostgreSQL is ready."']
+      containers:
+        - name: promotion-service
+          image: circleguard/promotion-service:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8088
+          envFrom:
+            - configMapRef:
+                name: circleguard-config
+            - secretRef:
+                name: circleguard-secrets
+          env:
+            - name: SERVER_PORT
+              value: "8088"
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:postgresql://postgres-svc:5432/circleguard_promotion"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: promotion-service-svc
+  namespace: circleguard
+spec:
+  type: NodePort
+  selector:
+    app: promotion-service
+  ports:
+    - port: 8088
+      targetPort: 8088
+      nodePort: 30088

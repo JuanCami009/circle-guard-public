@@ -425,3 +425,17 @@ curl -s -o /dev/null -w "promotion-service:   %{http_code}\n" http://localhost:3
 ![Respuestas HTTP de los 6 microservicios dev via NodePorts](../screenshots/curl-services-dev.png)
 
 ---
+
+## 5. Consideraciones y Limitaciones
+
+| Consideración | Detalle |
+|---|---|
+| **Gradle wrapper** | `chmod +x gradlew` es requerido en la etapa Checkout porque `git clone` no preserva permisos de ejecución |
+| **Gradle cache** | `~/.gradle` del host se monta en el contenedor Jenkins para evitar descargar `gradle-8.14-bin.zip` en cada build |
+| **Testcontainers — Docker socket** | `DOCKER_HOST=unix:///var/run/docker.sock` se setea como variable de entorno global en el pipeline para que Testcontainers detecte el daemon correctamente desde dentro del contenedor Jenkins |
+| **Testcontainers — Ryuk** | `TESTCONTAINERS_RYUK_DISABLED=true` deshabilita el contenedor de limpieza Ryuk, que falla en entornos Docker-en-Docker |
+| **PromotionPerformanceTest** | Crea hasta 10,000 nodos en Neo4j para simular cascadas de estado. Puede tardar hasta 10 minutos. El timeout de la etapa Integration Tests está configurado en 15 minutos |
+| **Conflicto de NodePorts** | Los NodePorts (30082–30088) son cluster-wide en Kubernetes, no por namespace. `circleguard` y `circleguard-dev` no pueden estar activos simultáneamente con los mismos NodePorts. Antes de ejecutar el pipeline dev, escalar prod a 0 réplicas: `kubectl scale deployment --all --replicas=0 -n circleguard` |
+| **Infraestructura replicada** | Los manifests de `k8s/infra/` se despliegan también en `circleguard-dev`, duplicando PostgreSQL, Kafka, Neo4j, Redis y MailHog. Esto garantiza aislamiento total pero consume más recursos del clúster |
+| **`sed` en GNU Linux** | El comando `sed -E` usa POSIX ERE. El contenedor Jenkins es Debian-based y usa GNU sed, que soporta `-E` correctamente |
+| **Puntos 3, 4 y 5** | Las etapas E2E Tests y Performance Tests son placeholders que se implementarán en el Punto 3. Los pipelines de stage y master environments se definen en los Puntos 4 y 5 |

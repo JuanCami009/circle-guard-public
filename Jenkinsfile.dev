@@ -8,9 +8,11 @@ pipeline {
     }
 
     environment {
-        REGISTRY    = 'circleguard'
-        DEV_NS      = 'circleguard-dev'
-        GRADLE_OPTS = '-Dorg.gradle.daemon=false'
+        REGISTRY                      = 'circleguard'
+        DEV_NS                        = 'circleguard-dev'
+        GRADLE_OPTS                   = '-Dorg.gradle.daemon=false'
+        DOCKER_HOST                   = 'unix:///var/run/docker.sock'
+        TESTCONTAINERS_RYUK_DISABLED  = 'true'
     }
 
     stages {

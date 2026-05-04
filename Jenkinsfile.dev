@@ -1,0 +1,315 @@
+pipeline {
+    agent any
+
+    options {
+        timeout(time: 60, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        disableConcurrentBuilds()
+    }
+
+    environment {
+        REGISTRY    = 'circleguard'
+        DEV_NS      = 'circleguard-dev'
+        GRADLE_OPTS = '-Dorg.gradle.daemon=false'
+    }
+
+    stages {
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Checkout') {
+            steps {
+                checkout scm
+                sh 'chmod +x gradlew'
+                echo "Branch: ${env.GIT_BRANCH} | Commit: ${env.GIT_COMMIT?.take(8)}"
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Build JARs') {
+            parallel {
+                stage('build:file-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-file-service:bootJar -x test --no-daemon'
+                    }
+                }
+                stage('build:gateway-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-gateway-service:bootJar -x test --no-daemon'
+                    }
+                }
+                stage('build:dashboard-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-dashboard-service:bootJar -x test --no-daemon'
+                    }
+                }
+                stage('build:form-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-form-service:bootJar -x test --no-daemon'
+                    }
+                }
+                stage('build:notification-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-notification-service:bootJar -x test --no-daemon'
+                    }
+                }
+                stage('build:promotion-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-promotion-service:bootJar -x test --no-daemon'
+                    }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Unit Tests') {
+            parallel {
+                stage('test:file-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-file-service:test --no-daemon'
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-file-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+                stage('test:gateway-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-gateway-service:test --no-daemon'
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-gateway-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+                stage('test:dashboard-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-dashboard-service:test --no-daemon'
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-dashboard-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+                stage('test:form-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-form-service:test --no-daemon'
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-form-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+                stage('test:notification-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-notification-service:test --no-daemon'
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-notification-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+                stage('test:promotion-service') {
+                    steps {
+                        // Excluir tests con Testcontainers (HealthStatusReevaluationTest,
+                        // AdministrativeCorrectionTest, PromotionPerformanceTest) que van a la
+                        // etapa Integration Tests porque levantan contenedores Docker reales.
+                        sh '''
+                            ./gradlew :services:circleguard-promotion-service:test \
+                                --tests "com.circleguard.promotion.controller.*" \
+                                --tests "com.circleguard.promotion.listener.*" \
+                                --tests "com.circleguard.promotion.service.FloorServiceTest" \
+                                --tests "com.circleguard.promotion.service.HealthStatusServiceTest" \
+                                --tests "com.circleguard.promotion.service.StatusLifecycleTest" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-promotion-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Integration Tests') {
+            parallel {
+                stage('integration:file-service') {
+                    steps { echo 'Sin tests Testcontainers en file-service — etapa omitida.' }
+                }
+                stage('integration:gateway-service') {
+                    steps { echo 'Sin tests Testcontainers en gateway-service — etapa omitida.' }
+                }
+                stage('integration:dashboard-service') {
+                    steps { echo 'Sin tests Testcontainers en dashboard-service — etapa omitida.' }
+                }
+                stage('integration:form-service') {
+                    steps { echo 'Sin tests Testcontainers en form-service — etapa omitida.' }
+                }
+                stage('integration:notification-service') {
+                    steps { echo 'Sin tests Testcontainers en notification-service — etapa omitida.' }
+                }
+                stage('integration:promotion-service') {
+                    options {
+                        timeout(time: 15, unit: 'MINUTES')
+                    }
+                    steps {
+                        // Testcontainers descarga neo4j:5.12 y redis:7.2.1 en tiempo de ejecucion.
+                        // Jenkins tiene acceso al Docker socket — Testcontainers lo detecta automaticamente.
+                        sh '''
+                            ./gradlew :services:circleguard-promotion-service:test \
+                                --tests "com.circleguard.promotion.service.HealthStatusReevaluationTest" \
+                                --tests "com.circleguard.promotion.service.AdministrativeCorrectionTest" \
+                                --tests "com.circleguard.promotion.performance.PromotionPerformanceTest" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-promotion-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Docker Build :dev') {
+            parallel {
+                stage('docker:file-service') {
+                    steps {
+                        sh 'docker build -t ${REGISTRY}/file-service:dev -f services/circleguard-file-service/Dockerfile .'
+                    }
+                }
+                stage('docker:gateway-service') {
+                    steps {
+                        sh 'docker build -t ${REGISTRY}/gateway-service:dev -f services/circleguard-gateway-service/Dockerfile .'
+                    }
+                }
+                stage('docker:dashboard-service') {
+                    steps {
+                        sh 'docker build -t ${REGISTRY}/dashboard-service:dev -f services/circleguard-dashboard-service/Dockerfile .'
+                    }
+                }
+                stage('docker:form-service') {
+                    steps {
+                        sh 'docker build -t ${REGISTRY}/form-service:dev -f services/circleguard-form-service/Dockerfile .'
+                    }
+                }
+                stage('docker:notification-service') {
+                    steps {
+                        sh 'docker build -t ${REGISTRY}/notification-service:dev -f services/circleguard-notification-service/Dockerfile .'
+                    }
+                }
+                stage('docker:promotion-service') {
+                    steps {
+                        sh 'docker build -t ${REGISTRY}/promotion-service:dev -f services/circleguard-promotion-service/Dockerfile .'
+                    }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Deploy Dev') {
+            steps {
+                sh '''
+                    # Crear namespace dev si no existe
+                    kubectl apply -f k8s/00-namespace-dev.yml
+
+                    # Desplegar infra (configmap, secrets, postgres, kafka, neo4j, redis, mailhog)
+                    # al namespace circleguard-dev mediante reemplazo de namespace con sed
+                    for f in k8s/infra/*.yml; do
+                        sed 's/namespace: circleguard$/namespace: circleguard-dev/g' "$f" \
+                            | kubectl apply -f -
+                    done
+
+                    # Esperar a que los componentes criticos de infra esten listos
+                    kubectl rollout status deployment/postgres -n circleguard-dev --timeout=120s || true
+                    kubectl rollout status deployment/redis    -n circleguard-dev --timeout=60s  || true
+                    kubectl rollout status deployment/kafka    -n circleguard-dev --timeout=90s  || true
+
+                    # Desplegar los 6 microservicios con namespace y tag de imagen reemplazados
+                    for f in k8s/services/*.yml; do
+                        sed -E \
+                            -e 's/namespace: circleguard$/namespace: circleguard-dev/g' \
+                            -e 's|image: circleguard/(.*):latest|image: circleguard/\\1:dev|g' \
+                            "$f" | kubectl apply -f -
+                    done
+
+                    echo "--- Recursos en namespace circleguard-dev ---"
+                    kubectl get all -n circleguard-dev
+                '''
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Smoke Tests') {
+            steps {
+                sh '''
+                    echo "Esperando que los pods del entorno dev esten listos..."
+                    kubectl rollout status deployment/file-service         -n circleguard-dev --timeout=120s
+                    kubectl rollout status deployment/gateway-service      -n circleguard-dev --timeout=120s
+                    kubectl rollout status deployment/dashboard-service    -n circleguard-dev --timeout=120s
+                    kubectl rollout status deployment/form-service         -n circleguard-dev --timeout=120s
+                    kubectl rollout status deployment/notification-service -n circleguard-dev --timeout=120s
+                    kubectl rollout status deployment/promotion-service    -n circleguard-dev --timeout=180s
+
+                    echo "Ejecutando smoke tests HTTP via NodePorts..."
+                    # HTTP 200, 404 o 401 indican que Spring Boot inicio correctamente.
+                    # Solo HTTP 000 (connection refused) o 5xx son errores reales.
+                    for port_svc in "30085:file-service" "30087:gateway-service" "30084:dashboard-service" "30086:form-service" "30082:notification-service" "30088:promotion-service"; do
+                        PORT=$(echo $port_svc | cut -d: -f1)
+                        SVC=$(echo $port_svc  | cut -d: -f2)
+                        CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 http://localhost:$PORT/)
+                        echo "${SVC} (puerto ${PORT}): HTTP ${CODE}"
+                        if [ "$CODE" = "000" ]; then
+                            echo "ERROR: ${SVC} no responde (connection refused)"
+                            exit 1
+                        fi
+                    done
+                    echo "Todos los smoke tests pasaron."
+                '''
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('E2E Tests') {
+            steps {
+                echo '[TODO - Punto 3] Placeholder: pruebas E2E contra namespace circleguard-dev'
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Performance Tests') {
+            steps {
+                echo '[TODO - Punto 3] Placeholder: pruebas de rendimiento con Locust contra circleguard-dev'
+            }
+        }
+
+    }
+
+    post {
+        always {
+            echo "Pipeline finalizado: ${currentBuild.currentResult}"
+        }
+        success {
+            echo "Dev pipeline EXITOSO — imagenes :dev desplegadas en namespace: circleguard-dev"
+        }
+        failure {
+            echo "Dev pipeline FALLIDO — revisar logs anteriores"
+        }
+    }
+}

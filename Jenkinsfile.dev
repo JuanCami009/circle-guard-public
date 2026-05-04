@@ -25,6 +25,15 @@ pipeline {
         }
 
         // ─────────────────────────────────────────────────────────────────
+        stage('Prepare') {
+            steps {
+                // Descarga gradle-8.14-bin.zip una sola vez antes de los builds paralelos.
+                // Sin esto, los 6 procesos compiten por el lock del archivo y hacen timeout.
+                sh './gradlew --version --no-daemon'
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
         stage('Build JARs') {
             parallel {
                 stage('build:file-service') {

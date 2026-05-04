@@ -35,22 +35,6 @@ La imagen oficial `jenkins/jenkins:lts` no incluye los binarios de `docker` ni `
 docker build -t circleguard/jenkins:latest jenkins/
 ```
 
-**Preparar el kubeconfig para el contenedor** (cambia el server a `kubernetes.docker.internal` y desactiva la verificación TLS, ya que el certificado del API server de Docker Desktop no incluye `host.docker.internal` en sus SANs):
-
-```bash
-python3 -c "
-import json, subprocess
-result = subprocess.run(['kubectl', 'config', 'view', '--raw', '-o', 'json'], capture_output=True, text=True)
-config = json.loads(result.stdout)
-for cl in config.get('clusters', []):
-    cl['cluster']['server'] = 'https://kubernetes.docker.internal:6443'
-    cl['cluster']['insecure-skip-tls-verify'] = True
-    cl['cluster'].pop('certificate-authority-data', None)
-config['current-context'] = 'docker-desktop'
-import json as j; open('/tmp/jenkins-kubeconfig','w').write(j.dumps(config, indent=2))
-"
-```
-
 **Levantar el contenedor:**
 
 ```bash
@@ -61,7 +45,9 @@ docker run -d \
   -v jenkins_home:/var/jenkins_home \
   -v /var/run/docker.sock:/var/run/docker.sock \
   --group-add 0 \
-  -v /tmp/jenkins-kubeconfig:/var/jenkins_home/.kube/config:ro \
+  --add-host=kubernetes.docker.internal:host-gateway \
+  -v ~/.kube/config:/var/jenkins_home/.kube/config:ro \
+  -v ~/.gradle:/var/jenkins_home/.gradle \
   circleguard/jenkins:latest
 ```
 
@@ -72,7 +58,9 @@ Los volúmenes y flags cumplen las siguientes funciones:
 | `jenkins_home` | Persistencia de configuración, jobs y plugins |
 | `/var/run/docker.sock` | Acceso al Docker daemon del host para construir imágenes |
 | `--group-add 0` | Agrega al usuario `jenkins` el grupo root (GID 0), requerido porque Docker Desktop Mac expone el socket con ese GID dentro del contenedor |
-| `jenkins-kubeconfig` | Kubeconfig del host con dirección `host.docker.internal` para llegar al API de K8s desde el contenedor |
+| `--add-host=kubernetes.docker.internal:host-gateway` | Resuelve `kubernetes.docker.internal` a la IP del host desde dentro del contenedor, permitiendo que `kubectl` alcance el API server de Docker Desktop sin modificar el kubeconfig |
+| `~/.kube/config` | Kubeconfig estándar del host montado directamente — no requiere script de preparación |
+| `~/.gradle` | Cache de Gradle del host (wrapper distributions, caches) — evita descargar `gradle-8.14-bin.zip` en cada build |
 
 Obtener la contraseña inicial de administrador:
 

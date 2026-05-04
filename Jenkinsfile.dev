@@ -8,11 +8,12 @@ pipeline {
     }
 
     environment {
-        REGISTRY                      = 'circleguard'
-        DEV_NS                        = 'circleguard-dev'
-        GRADLE_OPTS                   = '-Dorg.gradle.daemon=false'
-        DOCKER_HOST                   = 'unix:///var/run/docker.sock'
-        TESTCONTAINERS_RYUK_DISABLED  = 'true'
+        REGISTRY                              = 'circleguard'
+        DEV_NS                                = 'circleguard-dev'
+        GRADLE_OPTS                           = '-Dorg.gradle.daemon=false'
+        DOCKER_HOST                           = 'unix:///var/run/docker.sock'
+        TESTCONTAINERS_RYUK_DISABLED          = 'true'
+        TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE = '/var/run/docker.sock'
     }
 
     stages {
@@ -177,9 +178,13 @@ pipeline {
                         timeout(time: 15, unit: 'MINUTES')
                     }
                     steps {
-                        // Testcontainers descarga neo4j:5.12 y redis:7.2.1 en tiempo de ejecucion.
-                        // Jenkins tiene acceso al Docker socket — Testcontainers lo detecta automaticamente.
+                        // Testcontainers levanta neo4j:5.12 y redis:7.2.1 via Docker socket montado.
+                        // Las variables de entorno se exportan explicitamente ademas del bloque global
+                        // para garantizar que el JVM forkeado por Gradle las herede correctamente.
                         sh '''
+                            export DOCKER_HOST=unix:///var/run/docker.sock
+                            export TESTCONTAINERS_RYUK_DISABLED=true
+                            export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
                             ./gradlew :services:circleguard-promotion-service:test \
                                 --tests "com.circleguard.promotion.service.HealthStatusReevaluationTest" \
                                 --tests "com.circleguard.promotion.service.AdministrativeCorrectionTest" \

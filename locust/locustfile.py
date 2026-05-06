@@ -32,10 +32,12 @@ TEST_QR_TOKEN = os.getenv("LOCUST_QR_TOKEN", "")
 AUTH_HEADERS = {"Authorization": f"Bearer {TEST_JWT}"} if TEST_JWT else {}
 
 
-def _json(resp, label: str) -> None:
-    """Marca como fallo si la respuesta es 5xx."""
+def _check(resp, label: str) -> None:
+    """Falla solo en 5xx o sin respuesta; los 4xx son errores de negocio esperados."""
     if resp.status_code >= 500:
         resp.failure(f"{label}: HTTP {resp.status_code}")
+    else:
+        resp.success()
 
 
 # ── Perfil 1: Consulta de estado de salud (operación más frecuente) ───────────
@@ -56,7 +58,7 @@ class HealthStatusUser(HttpUser):
             catch_response=True,
             name="/api/v1/health/status/[anonymousId]"
         ) as resp:
-            _json(resp, "health-status")
+            _check(resp, "health-status")
 
     @task(1)
     def get_health_actuator(self):
@@ -94,7 +96,7 @@ class SurveySubmissionUser(HttpUser):
             catch_response=True,
             name="/api/v1/surveys [POST]"
         ) as resp:
-            _json(resp, "survey-submit")
+            _check(resp, "survey-submit")
 
     @task(1)
     def list_questionnaires(self):
@@ -104,7 +106,7 @@ class SurveySubmissionUser(HttpUser):
             catch_response=True,
             name="/api/v1/questionnaires [GET]"
         ) as resp:
-            _json(resp, "questionnaires-list")
+            _check(resp, "questionnaires-list")
 
 
 # ── Perfil 3: Validación de acceso en portería (gateway-service) ──────────────
@@ -129,6 +131,8 @@ class GatewayValidationUser(HttpUser):
             # 200 con valid:false (token inválido) es correcto bajo carga
             if resp.status_code >= 500:
                 resp.failure(f"Gateway 5xx: {resp.status_code}")
+            else:
+                resp.success()
 
 
 # ── Perfil 4: Consulta de analítica (dashboard-service) ───────────────────────
@@ -149,7 +153,7 @@ class DashboardAnalyticsUser(HttpUser):
             catch_response=True,
             name="/api/v1/analytics/summary [GET]"
         ) as resp:
-            _json(resp, "analytics-summary")
+            _check(resp, "analytics-summary")
 
     @task(1)
     def get_exposure_heatmap(self):
@@ -159,19 +163,36 @@ class DashboardAnalyticsUser(HttpUser):
             catch_response=True,
             name="/api/v1/analytics/heatmap [GET]"
         ) as resp:
-            _json(resp, "analytics-heatmap")
+            _check(resp, "analytics-heatmap")
 
 
 # ── Listener: métricas al terminar ────────────────────────────────────────────
 @events.quitting.add_listener
 def on_quitting(environment, **kwargs):
-    stats = environment.runner.stats.total
+    stats  = environment.runner.stats
+    total  = stats.total
+
+    # SLA: p95 < 500 ms y menos del 1% de errores 5xx
+    p95    = total.get_response_time_percentile(0.95) or 0
+    sla_ok = p95 < 500 and total.fail_ratio < 0.01
+
     print("\n========== RESUMEN DE RENDIMIENTO ==========")
-    print(f"  Peticiones totales : {stats.num_requests}")
-    print(f"  Fallos             : {stats.num_failures}")
-    print(f"  Tasa de errores    : {stats.fail_ratio * 100:.1f}%")
-    print(f"  RPS promedio       : {stats.current_rps:.1f}")
-    print(f"  Latencia p50       : {stats.get_response_time_percentile(0.50):.0f} ms")
-    print(f"  Latencia p95       : {stats.get_response_time_percentile(0.95):.0f} ms")
-    print(f"  Latencia p99       : {stats.get_response_time_percentile(0.99):.0f} ms")
+    print(f"  Peticiones totales : {total.num_requests}")
+    print(f"  Fallos (5xx)       : {total.num_failures}")
+    print(f"  Tasa de errores    : {total.fail_ratio * 100:.1f}%")
+    print(f"  RPS promedio       : {total.current_rps:.1f}")
+    print(f"  Latencia p50       : {total.get_response_time_percentile(0.50):.0f} ms")
+    print(f"  Latencia p95       : {p95:.0f} ms")
+    print(f"  Latencia p99       : {total.get_response_time_percentile(0.99):.0f} ms")
+
+    print("\n--- Desglose por endpoint (solo 5xx cuentan como fallo) ---")
+    for (method, name), entry in sorted(stats.entries.items(), key=lambda x: x[0][1]):
+        if entry.num_requests == 0:
+            continue
+        verdict = "OK    " if entry.num_failures == 0 else f"FALLO ({entry.num_failures}/{entry.num_requests})"
+        ep50 = entry.get_response_time_percentile(0.50) or 0
+        ep95 = entry.get_response_time_percentile(0.95) or 0
+        print(f"  [{verdict}] {method:4} {name:<45} {entry.num_requests:5} req | p50={ep50:.0f}ms p95={ep95:.0f}ms")
+
+    print(f"\n  Veredicto SLA (p95<500ms, <1% 5xx) : {'APROBADO' if sla_ok else 'REPROBADO'}")
     print("============================================\n")

@@ -14,6 +14,9 @@ pipeline {
         DOCKER_HOST                           = 'unix:///var/run/docker.sock'
         TESTCONTAINERS_RYUK_DISABLED          = 'true'
         TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE = '/var/run/docker.sock'
+        // kubeconfig parcheado con host.docker.internal en lugar de 127.0.0.1
+        // (el kubeconfig original del host no es accesible desde dentro del contenedor)
+        KUBECONFIG                            = '/var/jenkins_home/kube-jenkins.conf'
     }
 
     stages {

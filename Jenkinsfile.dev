@@ -247,11 +247,13 @@ pipeline {
                     kubectl rollout status deployment/redis    -n circleguard-dev --timeout=60s  || true
                     kubectl rollout status deployment/kafka    -n circleguard-dev --timeout=90s  || true
 
-                    # Desplegar los 6 microservicios con namespace y tag de imagen reemplazados
+                    # Desplegar los 6 microservicios con namespace, tag :dev y NodePorts desplazados
+                    # a rango 310XX para no colisionar con los 300XX del namespace prod.
                     for f in k8s/services/*.yml; do
                         sed -E \
                             -e 's/namespace: circleguard$/namespace: circleguard-dev/g' \
                             -e 's|image: circleguard/(.*):latest|image: circleguard/\\1:dev|g' \
+                            -e 's/nodePort: 300([0-9][0-9])/nodePort: 310\1/g' \
                             "$f" | kubectl apply -f -
                     done
 
@@ -276,7 +278,8 @@ pipeline {
                     echo "Ejecutando smoke tests HTTP via NodePorts..."
                     # HTTP 200, 404 o 401 indican que Spring Boot inicio correctamente.
                     # Solo HTTP 000 (connection refused) o 5xx son errores reales.
-                    for port_svc in "30085:file-service" "30087:gateway-service" "30084:dashboard-service" "30086:form-service" "30082:notification-service" "30088:promotion-service"; do
+                    # Puertos 310XX (dev) en lugar de 300XX (prod) para evitar conflictos de NodePort
+                    for port_svc in "31085:file-service" "31087:gateway-service" "31084:dashboard-service" "31086:form-service" "31082:notification-service" "31088:promotion-service"; do
                         PORT=$(echo $port_svc | cut -d: -f1)
                         SVC=$(echo $port_svc  | cut -d: -f2)
                         CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 http://localhost:$PORT/)

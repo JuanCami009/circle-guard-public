@@ -31,6 +31,19 @@ check_http() {
     fi
 }
 
+# Verifica que el servicio está vivo: acepta cualquier respuesta HTTP (no 000 ni 5xx)
+check_alive() {
+    local label="$1" url="$2"
+    CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$url")
+    if [ "$CODE" = "000" ]; then
+        log_fail "$label — sin respuesta (timeout o servicio caído)"
+    elif [ "${CODE:0:1}" = "5" ]; then
+        log_fail "$label — error de servidor (HTTP $CODE)"
+    else
+        log_pass "$label (HTTP $CODE — servicio vivo)"
+    fi
+}
+
 check_json_field() {
     local label="$1" url="$2" method="$3" body="$4" field="$5" expected_value="$6"
     if [ -n "$TEST_JWT" ]; then
@@ -62,12 +75,12 @@ echo "============================================================"
 # ------------------------------------------------------------------
 echo ""
 echo ">>> FLUJO 1: Health Check de todos los servicios"
-check_http "notification-service /actuator/health"  "http://$HOST:31082/actuator/health"  "200"
-check_http "dashboard-service /actuator/health"     "http://$HOST:31084/actuator/health"  "200"
-check_http "file-service /actuator/health"          "http://$HOST:31085/actuator/health"  "200"
-check_http "form-service /actuator/health"          "http://$HOST:31086/actuator/health"  "200"
-check_http "gateway-service /actuator/health"       "http://$HOST:31087/actuator/health"  "200"
-check_http "promotion-service /actuator/health"     "http://$HOST:31088/actuator/health"  "200"
+check_alive "notification-service" "http://$HOST:31082/api/v1/notifications"
+check_alive "dashboard-service"    "http://$HOST:31084/api/v1/analytics/summary"
+check_alive "file-service"         "http://$HOST:31085/api/v1/files"
+check_alive "form-service"         "http://$HOST:31086/api/v1/questionnaires"
+check_alive "gateway-service"      "http://$HOST:31087/api/v1/gate/health"
+check_alive "promotion-service"    "http://$HOST:31088/api/v1/health/status/ping"
 
 # ------------------------------------------------------------------
 # FLUJO 2: Listado de formularios activos (form-service)

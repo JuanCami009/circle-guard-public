@@ -488,6 +488,8 @@ kubectl get svc -n circleguard-dev
 
 ![Pods del namespace circleguard-dev en estado Running](../screenshots/kubectl-pods-dev.png)
 
+![Services del namespace circleguard-dev con NodePorts 310XX](../screenshots/kubectl-svc-dev.png)
+
 ### 5.5 Verificar resultados de pruebas en Jenkins
 
 1. Ir al build → **Test Result**.

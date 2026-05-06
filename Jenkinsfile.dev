@@ -251,9 +251,9 @@ pipeline {
                     # a rango 310XX para no colisionar con los 300XX del namespace prod.
                     # Reemplazos explícitos (sin backreferences) para compatibilidad con BusyBox sed.
                     for f in k8s/services/*.yml; do
-                        sed -E \
+                        sed \
                             -e 's/namespace: circleguard$/namespace: circleguard-dev/g' \
-                            -e 's|image: circleguard/(.*):latest|image: circleguard/\1:dev|g' \
+                            -e 's/:latest/:dev/g' \
                             -e 's/nodePort: 30082/nodePort: 31082/g' \
                             -e 's/nodePort: 30084/nodePort: 31084/g' \
                             -e 's/nodePort: 30085/nodePort: 31085/g' \

@@ -160,29 +160,82 @@ pipeline {
 
         // ─────────────────────────────────────────────────────────────────
         stage('Integration Tests') {
+            // Nota: tests que usan Testcontainers (neo4j, kafka, redis) requieren
+            // acceso real al Docker socket. En entorno Linux CI funcionan correctamente.
+            // En macOS con Docker Desktop el proxy de socket impide la detección de Testcontainers.
             parallel {
                 stage('integration:file-service') {
-                    steps { echo 'Sin tests Testcontainers en file-service — etapa omitida.' }
+                    steps { echo 'Sin tests de integración en file-service — etapa omitida.' }
                 }
                 stage('integration:gateway-service') {
-                    steps { echo 'Sin tests Testcontainers en gateway-service — etapa omitida.' }
+                    steps {
+                        sh '''
+                            ./gradlew :services:circleguard-gateway-service:test \
+                                --tests "com.circleguard.gateway.integration.*" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-gateway-service/build/test-results/test/*.xml'
+                        }
+                    }
                 }
                 stage('integration:dashboard-service') {
-                    steps { echo 'Sin tests Testcontainers en dashboard-service — etapa omitida.' }
+                    steps { echo 'Sin tests de integración en dashboard-service — etapa omitida.' }
                 }
                 stage('integration:form-service') {
-                    steps { echo 'Sin tests Testcontainers en form-service — etapa omitida.' }
+                    steps {
+                        sh '''
+                            ./gradlew :services:circleguard-form-service:test \
+                                --tests "com.circleguard.form.integration.*" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-form-service/build/test-results/test/*.xml'
+                        }
+                    }
                 }
                 stage('integration:notification-service') {
-                    steps { echo 'Sin tests Testcontainers en notification-service — etapa omitida.' }
+                    steps {
+                        sh '''
+                            ./gradlew :services:circleguard-notification-service:test \
+                                --tests "com.circleguard.notification.integration.*" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-notification-service/build/test-results/test/*.xml'
+                        }
+                    }
                 }
                 stage('integration:promotion-service') {
                     steps {
-                        // Tests Testcontainers (HealthStatusReevaluationTest, AdministrativeCorrectionTest,
-                        // PromotionPerformanceTest) omitidos en CI: el Docker socket de Docker Desktop en
-                        // macOS es un proxy que la libreria Java de Testcontainers no puede detectar.
-                        // Estos tests pasan correctamente en entorno local con Docker nativo.
-                        echo 'Tests Testcontainers omitidos en CI (incompatibilidad Docker Desktop proxy socket).'
+                        // SurveyListenerIntegrationTest usa Neo4j Testcontainer.
+                        // Omitido en macOS CI; en Linux CI ejecutar con:
+                        //   --tests "com.circleguard.promotion.integration.*"
+                        echo 'Tests Testcontainers de promotion-service omitidos en CI (incompatibilidad Docker Desktop proxy socket).'
+                    }
+                }
+                stage('integration:identity-service') {
+                    steps {
+                        sh '''
+                            ./gradlew :services:circleguard-identity-service:test \
+                                --tests "com.circleguard.identity.integration.*" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-identity-service/build/test-results/test/*.xml'
+                        }
                     }
                 }
             }
@@ -302,15 +355,45 @@ pipeline {
 
         // ─────────────────────────────────────────────────────────────────
         stage('E2E Tests') {
+            // Prerrequisito: configurar en Jenkins las credenciales:
+            //   e2e-jwt-token  → JWT válido para el entorno dev
+            //   e2e-anon-id    → anonymousId del usuario de prueba
+            //   e2e-qr-token   → QR token válido para gateway
             steps {
-                echo '[TODO - Punto 3] Placeholder: pruebas E2E contra namespace circleguard-dev'
+                sh 'chmod +x e2e/run_e2e.sh'
+                withCredentials([
+                    string(credentialsId: 'e2e-jwt-token',  variable: 'TEST_JWT'),
+                    string(credentialsId: 'e2e-anon-id',    variable: 'TEST_ANON_ID'),
+                    string(credentialsId: 'e2e-qr-token',   variable: 'TEST_QR_TOKEN')
+                ]) {
+                    sh 'bash e2e/run_e2e.sh'
+                }
             }
         }
 
         // ─────────────────────────────────────────────────────────────────
         stage('Performance Tests') {
+            // Ejecuta Locust via Docker contra el entorno dev desplegado.
+            // El reporte HTML se archiva como artefacto del build.
             steps {
-                echo '[TODO - Punto 3] Placeholder: pruebas de rendimiento con Locust contra circleguard-dev'
+                sh '''
+                    docker run --rm \
+                      --network host \
+                      -v "$PWD/locust:/mnt/locust" \
+                      -e LOCUST_JWT="${TEST_JWT:-}" \
+                      -e LOCUST_ANON_ID="${TEST_ANON_ID:-test-anon-id}" \
+                      locustio/locust \
+                      -f /mnt/locust/locustfile.py \
+                      --config /mnt/locust/locust.conf \
+                      --html /mnt/locust/locust-report.html \
+                      --csv /mnt/locust/locust-stats || true
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'locust/locust-report.html,locust/locust-stats*.csv',
+                                     allowEmptyArchive: true
+                }
             }
         }
 

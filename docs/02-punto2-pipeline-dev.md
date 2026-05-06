@@ -12,7 +12,7 @@ El pipeline ejecuta las siguientes etapas para los 6 microservicios seleccionado
 | 2 | Prepare | Secuencial | — | `./gradlew --version` para pre-descargar el wrapper |
 | 3 | Build JARs | Paralelo | 6 | `bootJar -x test --no-daemon` |
 | 4 | Unit Tests | Paralelo | 6 | `@WebMvcTest` / MockMvc / Mockito + JUnit XML |
-| 5 | Integration Tests | Paralelo | 6 | Sin-op para todos (Testcontainers omitido en CI — ver §3.4) |
+| 5 | Integration Tests | Paralelo | 6 | 4 servicios con tests reales (no-Testcontainers); `promotion-service` omitido por incompatibilidad Docker Desktop - ver sección 3.5 |
 | 6 | Docker Build `:dev` | Paralelo | 6 | `docker build` copiando JAR pre-compilado, tag `:dev` |
 | 7 | Deploy Dev | Secuencial | 6 + infra | `kubectl apply` con `sed` para namespace, imagen y NodePorts |
 | 8 | Smoke Tests | Secuencial | 6 | `curl` a `host.docker.internal` NodePorts 31082–31088 |
@@ -218,30 +218,88 @@ El bloque `post { always { junit ... } }` publica los resultados XML de JUnit en
 
 ### 3.5 Integration Tests (paralelo)
 
+La etapa ejecuta 7 sub-stages en paralelo. Los servicios con tests de integración que **no requieren Docker** (H2 in-memory o `@MockBean`) corren normalmente en CI. El único servicio omitido es `promotion-service`, cuyos tests usan Testcontainers (Neo4j).
+
 ```groovy
 stage('Integration Tests') {
     parallel {
         stage('integration:file-service') {
-            steps { echo 'Sin tests Testcontainers en file-service — etapa omitida.' }
+            steps { echo 'Sin tests de integración en file-service — etapa omitida.' }
         }
-        // ... (4 servicios sin Testcontainers — misma estructura)
+        stage('integration:gateway-service') {
+            steps {
+                sh '''
+                    ./gradlew :services:circleguard-gateway-service:test \
+                        --tests "com.circleguard.gateway.integration.*" \
+                        --no-daemon
+                '''
+            }
+            post { always { junit allowEmptyResults: true,
+                testResults: 'services/circleguard-gateway-service/build/test-results/test/*.xml' } }
+        }
+        stage('integration:dashboard-service') {
+            steps { echo 'Sin tests de integración en dashboard-service — etapa omitida.' }
+        }
+        stage('integration:form-service') {
+            steps {
+                sh '''
+                    ./gradlew :services:circleguard-form-service:test \
+                        --tests "com.circleguard.form.integration.*" \
+                        --no-daemon
+                '''
+            }
+            post { always { junit allowEmptyResults: true,
+                testResults: 'services/circleguard-form-service/build/test-results/test/*.xml' } }
+        }
+        stage('integration:notification-service') {
+            steps {
+                sh '''
+                    ./gradlew :services:circleguard-notification-service:test \
+                        --tests "com.circleguard.notification.integration.*" \
+                        --no-daemon
+                '''
+            }
+            post { always { junit allowEmptyResults: true,
+                testResults: 'services/circleguard-notification-service/build/test-results/test/*.xml' } }
+        }
         stage('integration:promotion-service') {
             steps {
-                // Tests Testcontainers omitidos en CI: el Docker socket de Docker Desktop en
-                // macOS es un proxy que la libreria Java de Testcontainers no puede detectar.
-                // Estos tests pasan correctamente en entorno local con Docker nativo.
-                echo 'Tests Testcontainers omitidos en CI (incompatibilidad Docker Desktop proxy socket).'
+                // SurveyListenerIntegrationTest usa Neo4j Testcontainer.
+                // Omitido en macOS CI; en Linux CI ejecutar con:
+                //   --tests "com.circleguard.promotion.integration.*"
+                echo 'Tests Testcontainers de promotion-service omitidos en CI (incompatibilidad Docker Desktop proxy socket).'
             }
+        }
+        stage('integration:identity-service') {
+            steps {
+                sh '''
+                    ./gradlew :services:circleguard-identity-service:test \
+                        --tests "com.circleguard.identity.integration.*" \
+                        --no-daemon
+                '''
+            }
+            post { always { junit allowEmptyResults: true,
+                testResults: 'services/circleguard-identity-service/build/test-results/test/*.xml' } }
         }
     }
 }
 ```
 
-**¿Por qué están omitidos los tests de Testcontainers?**
+| Sub-stage | Test class | Tecnología | Corre en macOS CI |
+|---|---|---|---|
+| `integration:gateway-service` | `GatewayValidationIntegrationTest` | `@SpringBootTest` + `@MockBean StringRedisTemplate` | Sí |
+| `integration:form-service` | `QuestionnaireJpaIntegrationTest` | `@DataJpaTest` + H2 | Sí |
+| `integration:notification-service` | `ExposureNotificationIntegrationTest` | `@SpringBootTest` + `@MockBean` dispatcher | Sí |
+| `integration:identity-service` | `IdentityVaultServiceIntegrationTest` | `@DataJpaTest` + H2 | Sí |
+| `integration:promotion-service` | `SurveyListenerIntegrationTest` | `@Testcontainers` + Neo4j | **No — omitido** |
+
+**¿Por qué está omitido `promotion-service`?**
 
 Docker Desktop en macOS expone el socket de Docker a través de un proceso proxy (`/run/host-services/docker.proxy.sock`), montado como `/var/run/docker.sock` dentro del contenedor Jenkins. Aunque el CLI de Docker funciona correctamente a través de este proxy, la librería Java de Testcontainers utiliza un cliente HTTP directo sobre Unix socket que no es compatible con el comportamiento del proxy de Docker Desktop.
 
-El resultado es que `DockerClientProviderStrategy` falla al detectar el daemon Docker y los tests lanzan `java.lang.IllegalStateException: Could not find a valid Docker environment`. Los 3 tests afectados (`HealthStatusReevaluationTest`, `AdministrativeCorrectionTest`, `PromotionPerformanceTest`) se ejecutan correctamente en entornos locales con Docker nativo (Linux) o en pipelines con acceso a un socket Docker real.
+El resultado es que `DockerClientProviderStrategy` falla al detectar el daemon Docker y los tests lanzan `java.lang.IllegalStateException: Could not find a valid Docker environment`. Los tests afectados (`HealthStatusReevaluationTest`, `AdministrativeCorrectionTest`, `PromotionPerformanceTest`, `SurveyListenerIntegrationTest`) se ejecutan correctamente en entornos locales con Docker nativo (Linux) o en pipelines con acceso a un socket Docker real.
+
+Los 4 tests de los demás servicios no necesitan Docker: `GatewayValidationIntegrationTest` y `ExposureNotificationIntegrationTest` usan `@SpringBootTest` con `@MockBean` para reemplazar los beans de Redis y los dispatchers respectivamente; `QuestionnaireJpaIntegrationTest` e `IdentityVaultServiceIntegrationTest` usan `@DataJpaTest` con H2 in-memory.
 
 ### 3.6 Docker Build :dev (paralelo)
 

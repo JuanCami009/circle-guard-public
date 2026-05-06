@@ -419,7 +419,34 @@ csv         = /mnt/locust/locust-stats           # estadísticas CSV
 exit-code-on-error = 1
 ```
 
-### 4.3 Ejecución local
+### 4.3 Imagen Docker: `locust/Dockerfile`
+
+Para ejecutar Locust en el pipeline Jenkins sin depender de volúmenes Docker (incompatibles con Docker Desktop en macOS), se creó una imagen efímera que empaqueta los archivos de prueba directamente:
+
+```dockerfile
+FROM locustio/locust
+USER root
+COPY . /mnt/locust/
+RUN chown -R locust:locust /mnt/locust
+USER locust
+WORKDIR /mnt/locust
+```
+
+**Por qué es necesario:**
+
+El pipeline Jenkins corre dentro de un contenedor Docker. Al intentar `docker run -v "$PWD/locust:/mnt/locust"`, el path `$PWD` es una ruta del filesystem del contenedor Jenkins (`/var/jenkins_home/workspace/...`), no del host macOS. Docker Desktop busca ese path en el host, no lo encuentra, y monta un directorio vacío — Locust no puede leer `locust.conf` ni `locustfile.py`.
+
+`docker build` resuelve esto porque envía los archivos como un **tar al daemon Docker** (no como path del host). Una vez construida la imagen, los archivos están embebidos y no se necesita ningún volumen.
+
+El `chown -R locust:locust /mnt/locust` es necesario porque la instrucción `COPY` crea los archivos con propietario `root`, y el proceso Locust (que corre como usuario `locust`) necesita permisos de escritura para generar `locust-report.html` y `locust-stats_stats.csv` en ese mismo directorio.
+
+| Archivo | Rol |
+|---|---|
+| `locust/Dockerfile` | Define la imagen efímera con los archivos de prueba embebidos |
+| `locust/locustfile.py` | Escenarios de carga (copiado a `/mnt/locust/`) |
+| `locust/locust.conf` | Configuración headless (copiado a `/mnt/locust/`) |
+
+### 4.4 Ejecución local
 
 ```bash
 # Instalar locust
@@ -436,7 +463,7 @@ locust -f locust/locustfile.py --config locust/locust.conf \
   --html locust-report.html
 ```
 
-### 4.4 Ejecución en Jenkins (via Docker)
+### 4.5 Ejecución en Jenkins (via Docker)
 
 Se usa `docker build` para empaquetar los archivos Locust en una imagen efímera antes de correrla. Esto evita el problema de Docker-in-Docker en macOS: los volúmenes con paths del contenedor Jenkins (`/var/jenkins_home/workspace/...`) no son accesibles desde Docker Desktop, por lo que un `docker run -v` montaría un directorio vacío. `docker build` envía los archivos como tar al daemon sin depender del filesystem del host.
 
@@ -543,7 +570,7 @@ Los tests unitarios e de integración deben ejecutarse antes de cada build. Los 
 |---|---|---|
 | Unitarias | 100% pass | Cualquier fallo bloquea el pipeline |
 | Integración (no-TC) | 100% pass | Cualquier fallo bloquea el pipeline |
-| Integración (Testcontainers) | Local: 100% pass | En macOS CI: omitidos (ver §2) |
+| Integración (Testcontainers) | Local: 100% pass | En macOS CI: omitidos (ver sección 2) |
 
 ### 6.2 Pruebas E2E
 

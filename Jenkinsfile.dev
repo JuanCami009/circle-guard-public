@@ -231,11 +231,15 @@ pipeline {
                     # Crear namespace dev si no existe
                     kubectl apply -f k8s/00-namespace-dev.yml
 
-                    # Desplegar infra (configmap, secrets, postgres, kafka, neo4j, redis, mailhog)
-                    # al namespace circleguard-dev mediante reemplazo de namespace con sed
+                    # Desplegar infra al namespace circleguard-dev.
+                    # Los NodePorts de conveniencia (neo4j-browser, mailhog-ui) se convierten a
+                    # ClusterIP para evitar conflictos con los NodePorts del namespace prod.
                     for f in k8s/infra/*.yml; do
-                        sed 's/namespace: circleguard$/namespace: circleguard-dev/g' "$f" \
-                            | kubectl apply -f -
+                        sed -E \
+                            -e 's/namespace: circleguard$/namespace: circleguard-dev/g' \
+                            -e 's/type: NodePort/type: ClusterIP/g' \
+                            -e '/nodePort:/d' \
+                            "$f" | kubectl apply -f -
                     done
 
                     # Esperar a que los componentes criticos de infra esten listos

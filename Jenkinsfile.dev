@@ -288,7 +288,7 @@ pipeline {
                     for port_svc in "31085:file-service" "31087:gateway-service" "31084:dashboard-service" "31086:form-service" "31082:notification-service" "31088:promotion-service"; do
                         PORT=$(echo $port_svc | cut -d: -f1)
                         SVC=$(echo $port_svc  | cut -d: -f2)
-                        CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 http://localhost:$PORT/)
+                        CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 http://host.docker.internal:$PORT/)
                         echo "${SVC} (puerto ${PORT}): HTTP ${CODE}"
                         if [ "$CODE" = "000" ]; then
                             echo "ERROR: ${SVC} no responde (connection refused)"

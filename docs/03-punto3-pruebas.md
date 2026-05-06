@@ -438,17 +438,25 @@ locust -f locust/locustfile.py --config locust/locust.conf \
 
 ### 4.4 Ejecución en Jenkins (via Docker)
 
+Se usa `docker build` para empaquetar los archivos Locust en una imagen efímera antes de correrla. Esto evita el problema de Docker-in-Docker en macOS: los volúmenes con paths del contenedor Jenkins (`/var/jenkins_home/workspace/...`) no son accesibles desde Docker Desktop, por lo que un `docker run -v` montaría un directorio vacío. `docker build` envía los archivos como tar al daemon sin depender del filesystem del host.
+
 ```bash
-docker run --rm \
+# Construir imagen con los archivos Locust embebidos
+docker build -t circleguard-locust -f locust/Dockerfile locust/
+
+# Ejecutar la prueba de carga (sin --rm para poder extraer reportes)
+docker run --name locust-perf-run \
   --network host \
-  -v "$PWD/locust:/mnt/locust" \
   -e LOCUST_JWT="${TEST_JWT:-}" \
   -e LOCUST_ANON_ID="${TEST_ANON_ID:-test-anon-id}" \
-  locustio/locust \
+  circleguard-locust \
   -f /mnt/locust/locustfile.py \
-  --config /mnt/locust/locust.conf \
-  --html /mnt/locust/locust-report.html \
-  --csv /mnt/locust/locust-stats
+  --config /mnt/locust/locust.conf
+
+# Extraer reportes del contenedor al workspace
+docker cp locust-perf-run:/mnt/locust/locust-report.html locust/locust-report.html
+docker cp locust-perf-run:/mnt/locust/locust-stats_stats.csv locust/locust-stats_stats.csv
+docker rm locust-perf-run
 ```
 
 El reporte HTML se archiva como artefacto del build de Jenkins.
@@ -498,14 +506,18 @@ stage('E2E Tests') {
 stage('Performance Tests') {
     steps {
         sh '''
-            docker run --rm \
+            docker build -t circleguard-locust -f locust/Dockerfile locust/
+            docker rm -f locust-perf-run 2>/dev/null || true
+            docker run --name locust-perf-run \
               --network host \
-              -v "$PWD/locust:/mnt/locust" \
-              locustio/locust \
+              -e LOCUST_JWT="${TEST_JWT:-}" \
+              -e LOCUST_ANON_ID="${TEST_ANON_ID:-test-anon-id}" \
+              circleguard-locust \
               -f /mnt/locust/locustfile.py \
-              --config /mnt/locust/locust.conf \
-              --html /mnt/locust/locust-report.html \
-              --csv /mnt/locust/locust-stats || true
+              --config /mnt/locust/locust.conf || true
+            docker cp locust-perf-run:/mnt/locust/locust-report.html locust/locust-report.html || true
+            docker cp locust-perf-run:/mnt/locust/locust-stats_stats.csv locust/locust-stats_stats.csv || true
+            docker rm locust-perf-run || true
         '''
     }
     post {

@@ -374,19 +374,25 @@ pipeline {
         // ─────────────────────────────────────────────────────────────────
         stage('Performance Tests') {
             // Ejecuta Locust via Docker contra el entorno dev desplegado.
+            // Se usa docker build en lugar de docker run -v para evitar el problema
+            // de DinD en macOS: los volúmenes con paths del contenedor Jenkins no son
+            // accesibles desde Docker Desktop. docker build envía los archivos como tar
+            // al daemon (sin depender del filesystem del host).
             // El reporte HTML se archiva como artefacto del build.
             steps {
                 sh '''
-                    docker run --rm \
+                    docker build -t circleguard-locust -f locust/Dockerfile locust/
+                    docker rm -f locust-perf-run 2>/dev/null || true
+                    docker run --name locust-perf-run \
                       --network host \
-                      -v "$PWD/locust:/mnt/locust" \
                       -e LOCUST_JWT="${TEST_JWT:-}" \
                       -e LOCUST_ANON_ID="${TEST_ANON_ID:-test-anon-id}" \
-                      locustio/locust \
+                      circleguard-locust \
                       -f /mnt/locust/locustfile.py \
-                      --config /mnt/locust/locust.conf \
-                      --html /mnt/locust/locust-report.html \
-                      --csv /mnt/locust/locust-stats || true
+                      --config /mnt/locust/locust.conf || true
+                    docker cp locust-perf-run:/mnt/locust/locust-report.html locust/locust-report.html || true
+                    docker cp locust-perf-run:/mnt/locust/locust-stats_stats.csv locust/locust-stats_stats.csv || true
+                    docker rm locust-perf-run || true
                 '''
             }
             post {

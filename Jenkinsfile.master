@@ -433,6 +433,8 @@ pipeline {
                     COMMIT_HASH=$(git rev-parse --short HEAD)
                     COMMIT_AUTHOR=$(git log -1 --pretty=format:"%an")
                     TOTAL_COMMITS=$(git log ${RANGE} --oneline --no-merges | wc -l | tr -d " ")
+                    # BT evita usar \` dentro de sh '''...''' que el parser Groovy rechaza
+                    BT=$(printf '`')
 
                     # Generar el archivo Markdown de Release Notes
                     {
@@ -442,11 +444,11 @@ pipeline {
                         echo "|---|---|"
                         echo "| Version | ${VERSION} |"
                         echo "| Fecha | ${BUILD_DATE} |"
-                        echo "| Commit | \`${COMMIT_HASH}\` |"
+                        echo "| Commit | ${BT}${COMMIT_HASH}${BT} |"
                         echo "| Autor | ${COMMIT_AUTHOR} |"
                         echo "| Build Jenkins | #${BUILD_NUMBER} |"
                         echo "| Branch | ${GIT_BRANCH} |"
-                        echo "| Namespace Kubernetes | \`circleguard\` (produccion) |"
+                        echo "| Namespace Kubernetes | ${BT}circleguard${BT} (produccion) |"
                         echo "| Total cambios | ${TOTAL_COMMITS} commits (${SINCE_MSG}) |"
                         echo ""
                         echo "---"
@@ -489,21 +491,21 @@ pipeline {
                         echo ""
                         echo "| Atributo | Valor |"
                         echo "|---|---|"
-                        echo "| Namespace Kubernetes | \`circleguard\` (produccion) |"
-                        echo "| Tag de imagen Docker | \`:latest\` |"
+                        echo "| Namespace Kubernetes | ${BT}circleguard${BT} (produccion) |"
+                        echo "| Tag de imagen Docker | ${BT}:latest${BT} |"
                         echo "| NodePorts | 30082, 30084, 30085, 30086, 30087, 30088 |"
-                        echo "| Pipeline | \`Jenkinsfile.master\` |"
+                        echo "| Pipeline | ${BT}Jenkinsfile.master${BT} |"
                         echo ""
                         echo "## Servicios desplegados"
                         echo ""
                         echo "| Servicio | Imagen | NodePort |"
                         echo "|---|---|---|"
-                        echo "| notification-service | \`circleguard/notification-service:latest\` | 30082 |"
-                        echo "| dashboard-service | \`circleguard/dashboard-service:latest\` | 30084 |"
-                        echo "| file-service | \`circleguard/file-service:latest\` | 30085 |"
-                        echo "| form-service | \`circleguard/form-service:latest\` | 30086 |"
-                        echo "| gateway-service | \`circleguard/gateway-service:latest\` | 30087 |"
-                        echo "| promotion-service | \`circleguard/promotion-service:latest\` | 30088 |"
+                        echo "| notification-service | ${BT}circleguard/notification-service:latest${BT} | 30082 |"
+                        echo "| dashboard-service | ${BT}circleguard/dashboard-service:latest${BT} | 30084 |"
+                        echo "| file-service | ${BT}circleguard/file-service:latest${BT} | 30085 |"
+                        echo "| form-service | ${BT}circleguard/form-service:latest${BT} | 30086 |"
+                        echo "| gateway-service | ${BT}circleguard/gateway-service:latest${BT} | 30087 |"
+                        echo "| promotion-service | ${BT}circleguard/promotion-service:latest${BT} | 30088 |"
                         echo ""
                         echo "## Validaciones ejecutadas"
                         echo ""

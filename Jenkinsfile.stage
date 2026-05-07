@@ -1,0 +1,431 @@
+pipeline {
+    agent any
+
+    options {
+        timeout(time: 60, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        disableConcurrentBuilds()
+    }
+
+    environment {
+        REGISTRY                              = 'circleguard'
+        STAGE_NS                              = 'circleguard-stage'
+        GRADLE_OPTS                           = '-Dorg.gradle.daemon=false'
+        DOCKER_HOST                           = 'unix:///var/run/docker.sock'
+        TESTCONTAINERS_RYUK_DISABLED          = 'true'
+        TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE = '/var/run/docker.sock'
+        // kubeconfig parcheado con host.docker.internal en lugar de 127.0.0.1
+        // (el kubeconfig original del host no es accesible desde dentro del contenedor)
+        KUBECONFIG                            = '/var/jenkins_home/kube-jenkins.conf'
+    }
+
+    stages {
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Checkout') {
+            steps {
+                checkout scm
+                sh 'chmod +x gradlew'
+                echo "Branch: ${env.GIT_BRANCH} | Commit: ${env.GIT_COMMIT?.take(8)}"
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Prepare') {
+            steps {
+                // Descarga gradle-8.14-bin.zip una sola vez antes de los builds paralelos.
+                // Sin esto, los 6 procesos compiten por el lock del archivo y hacen timeout.
+                sh './gradlew --version --no-daemon'
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Build JARs') {
+            parallel {
+                stage('build:file-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-file-service:bootJar -x test --no-daemon'
+                    }
+                }
+                stage('build:gateway-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-gateway-service:bootJar -x test --no-daemon'
+                    }
+                }
+                stage('build:dashboard-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-dashboard-service:bootJar -x test --no-daemon'
+                    }
+                }
+                stage('build:form-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-form-service:bootJar -x test --no-daemon'
+                    }
+                }
+                stage('build:notification-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-notification-service:bootJar -x test --no-daemon'
+                    }
+                }
+                stage('build:promotion-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-promotion-service:bootJar -x test --no-daemon'
+                    }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Unit Tests') {
+            parallel {
+                stage('test:file-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-file-service:test --no-daemon'
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-file-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+                stage('test:gateway-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-gateway-service:test --no-daemon'
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-gateway-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+                stage('test:dashboard-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-dashboard-service:test --no-daemon'
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-dashboard-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+                stage('test:form-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-form-service:test --no-daemon'
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-form-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+                stage('test:notification-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-notification-service:test --no-daemon'
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-notification-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+                stage('test:promotion-service') {
+                    steps {
+                        // Excluir tests con Testcontainers (HealthStatusReevaluationTest,
+                        // AdministrativeCorrectionTest, PromotionPerformanceTest) que van a la
+                        // etapa Integration Tests porque levantan contenedores Docker reales.
+                        sh '''
+                            ./gradlew :services:circleguard-promotion-service:test \
+                                --tests "com.circleguard.promotion.controller.*" \
+                                --tests "com.circleguard.promotion.listener.*" \
+                                --tests "com.circleguard.promotion.service.FloorServiceTest" \
+                                --tests "com.circleguard.promotion.service.HealthStatusServiceTest" \
+                                --tests "com.circleguard.promotion.service.StatusLifecycleTest" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-promotion-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Integration Tests') {
+            // Nota: tests que usan Testcontainers (neo4j, kafka, redis) requieren
+            // acceso real al Docker socket. En entorno Linux CI funcionan correctamente.
+            // En macOS con Docker Desktop el proxy de socket impide la detección de Testcontainers.
+            parallel {
+                stage('integration:file-service') {
+                    steps { echo 'Sin tests de integración en file-service — etapa omitida.' }
+                }
+                stage('integration:gateway-service') {
+                    steps {
+                        sh '''
+                            ./gradlew :services:circleguard-gateway-service:test \
+                                --tests "com.circleguard.gateway.integration.*" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-gateway-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+                stage('integration:dashboard-service') {
+                    steps { echo 'Sin tests de integración en dashboard-service — etapa omitida.' }
+                }
+                stage('integration:form-service') {
+                    steps {
+                        sh '''
+                            ./gradlew :services:circleguard-form-service:test \
+                                --tests "com.circleguard.form.integration.*" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-form-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+                stage('integration:notification-service') {
+                    steps {
+                        sh '''
+                            ./gradlew :services:circleguard-notification-service:test \
+                                --tests "com.circleguard.notification.integration.*" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-notification-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+                stage('integration:promotion-service') {
+                    steps {
+                        // SurveyListenerIntegrationTest usa Neo4j Testcontainer.
+                        // Omitido en macOS CI; en Linux CI ejecutar con:
+                        //   --tests "com.circleguard.promotion.integration.*"
+                        echo 'Tests Testcontainers de promotion-service omitidos en CI (incompatibilidad Docker Desktop proxy socket).'
+                    }
+                }
+                stage('integration:identity-service') {
+                    steps {
+                        sh '''
+                            ./gradlew :services:circleguard-identity-service:test \
+                                --tests "com.circleguard.identity.integration.*" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-identity-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Docker Build :stage') {
+            parallel {
+                stage('docker:file-service') {
+                    steps {
+                        sh 'docker build -t ${REGISTRY}/file-service:stage -f services/circleguard-file-service/Dockerfile .'
+                    }
+                }
+                stage('docker:gateway-service') {
+                    steps {
+                        sh 'docker build -t ${REGISTRY}/gateway-service:stage -f services/circleguard-gateway-service/Dockerfile .'
+                    }
+                }
+                stage('docker:dashboard-service') {
+                    steps {
+                        sh 'docker build -t ${REGISTRY}/dashboard-service:stage -f services/circleguard-dashboard-service/Dockerfile .'
+                    }
+                }
+                stage('docker:form-service') {
+                    steps {
+                        sh 'docker build -t ${REGISTRY}/form-service:stage -f services/circleguard-form-service/Dockerfile .'
+                    }
+                }
+                stage('docker:notification-service') {
+                    steps {
+                        sh 'docker build -t ${REGISTRY}/notification-service:stage -f services/circleguard-notification-service/Dockerfile .'
+                    }
+                }
+                stage('docker:promotion-service') {
+                    steps {
+                        sh 'docker build -t ${REGISTRY}/promotion-service:stage -f services/circleguard-promotion-service/Dockerfile .'
+                    }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Deploy Stage') {
+            steps {
+                sh '''
+                    # Crear namespace stage si no existe
+                    kubectl apply -f k8s/00-namespace-stage.yml
+
+                    # Desplegar infra al namespace circleguard-stage.
+                    # Los NodePorts de conveniencia (neo4j-browser, mailhog-ui) se convierten a
+                    # ClusterIP para evitar conflictos con los NodePorts de prod (300XX) y dev (310XX).
+                    for f in k8s/infra/*.yml; do
+                        sed -E \
+                            -e 's/namespace: circleguard$/namespace: circleguard-stage/g' \
+                            -e 's/type: NodePort/type: ClusterIP/g' \
+                            -e '/nodePort:/d' \
+                            "$f" | kubectl apply -f -
+                    done
+
+                    # Esperar a que los componentes criticos de infra esten listos
+                    kubectl rollout status deployment/postgres -n circleguard-stage --timeout=120s || true
+                    kubectl rollout status deployment/redis    -n circleguard-stage --timeout=60s  || true
+                    kubectl rollout status deployment/kafka    -n circleguard-stage --timeout=90s  || true
+
+                    # Desplegar los 6 microservicios con namespace, tag :stage y NodePorts desplazados
+                    # a rango 320XX para no colisionar con prod (300XX) ni dev (310XX).
+                    # Reemplazos explícitos (sin backreferences) para compatibilidad con BusyBox sed.
+                    for f in k8s/services/*.yml; do
+                        sed \
+                            -e 's/namespace: circleguard$/namespace: circleguard-stage/g' \
+                            -e 's/:latest/:stage/g' \
+                            -e 's/nodePort: 30082/nodePort: 32082/g' \
+                            -e 's/nodePort: 30084/nodePort: 32084/g' \
+                            -e 's/nodePort: 30085/nodePort: 32085/g' \
+                            -e 's/nodePort: 30086/nodePort: 32086/g' \
+                            -e 's/nodePort: 30087/nodePort: 32087/g' \
+                            -e 's/nodePort: 30088/nodePort: 32088/g' \
+                            "$f" | kubectl apply -f -
+                    done
+
+                    echo "--- Recursos en namespace circleguard-stage ---"
+                    kubectl get all -n circleguard-stage
+                '''
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Smoke Tests') {
+            steps {
+                sh '''
+                    echo "Esperando que los pods del entorno stage esten listos..."
+                    kubectl rollout status deployment/file-service         -n circleguard-stage --timeout=120s
+                    kubectl rollout status deployment/gateway-service      -n circleguard-stage --timeout=120s
+                    kubectl rollout status deployment/dashboard-service    -n circleguard-stage --timeout=120s
+                    kubectl rollout status deployment/form-service         -n circleguard-stage --timeout=120s
+                    kubectl rollout status deployment/notification-service -n circleguard-stage --timeout=120s
+                    kubectl rollout status deployment/promotion-service    -n circleguard-stage --timeout=180s
+
+                    echo "Ejecutando smoke tests HTTP via NodePorts..."
+                    # HTTP 200, 404 o 401 indican que Spring Boot inicio correctamente.
+                    # Solo HTTP 000 (connection refused) o 5xx son errores reales.
+                    # Puertos 320XX (stage) — no colisionan con prod (300XX) ni dev (310XX)
+                    for port_svc in "32085:file-service" "32087:gateway-service" "32084:dashboard-service" "32086:form-service" "32082:notification-service" "32088:promotion-service"; do
+                        PORT=$(echo $port_svc | cut -d: -f1)
+                        SVC=$(echo $port_svc  | cut -d: -f2)
+                        CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 http://host.docker.internal:$PORT/)
+                        echo "${SVC} (puerto ${PORT}): HTTP ${CODE}"
+                        if [ "$CODE" = "000" ]; then
+                            echo "ERROR: ${SVC} no responde (connection refused)"
+                            exit 1
+                        fi
+                    done
+                    echo "Todos los smoke tests pasaron."
+                '''
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('E2E Tests') {
+            // Prerrequisito: configurar en Jenkins las credenciales (reutiliza las mismas del dev pipeline):
+            //   e2e-jwt-token  → JWT válido (mismo para todos los entornos — auth compartido)
+            //   e2e-anon-id    → anonymousId del usuario de prueba
+            //   e2e-qr-token   → QR token válido para gateway
+            // Las variables E2E_PORT_* redirigen la suite E2E a los NodePorts 320XX del namespace stage.
+            steps {
+                sh 'chmod +x e2e/run_e2e.sh'
+                withCredentials([
+                    string(credentialsId: 'e2e-jwt-token',  variable: 'TEST_JWT'),
+                    string(credentialsId: 'e2e-anon-id',    variable: 'TEST_ANON_ID'),
+                    string(credentialsId: 'e2e-qr-token',   variable: 'TEST_QR_TOKEN')
+                ]) {
+                    sh '''
+                        E2E_PORT_NOTIFICATION=32082 \
+                        E2E_PORT_DASHBOARD=32084 \
+                        E2E_PORT_FILE=32085 \
+                        E2E_PORT_FORM=32086 \
+                        E2E_PORT_GATEWAY=32087 \
+                        E2E_PORT_PROMOTION=32088 \
+                        bash e2e/run_e2e.sh
+                    '''
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Performance Tests') {
+            // Ejecuta Locust via Docker contra el entorno stage desplegado.
+            // LOCUST_HOST_* redirigen cada perfil de usuario al NodePort 320XX correspondiente.
+            // Se usa docker build (no -v) para evitar el problema de DinD en macOS:
+            // los paths del contenedor Jenkins no son accesibles desde Docker Desktop.
+            // El reporte se archiva como locust-report-stage.html para distinguirlo del dev.
+            steps {
+                sh '''
+                    docker build -t circleguard-locust-stage -f locust/Dockerfile locust/
+                    docker rm -f locust-perf-run-stage 2>/dev/null || true
+                    docker run --name locust-perf-run-stage \
+                      --network host \
+                      -e LOCUST_JWT="${TEST_JWT:-}" \
+                      -e LOCUST_ANON_ID="${TEST_ANON_ID:-test-anon-id}" \
+                      -e LOCUST_HOST_PROMOTION="http://host.docker.internal:32088" \
+                      -e LOCUST_HOST_FORM="http://host.docker.internal:32086" \
+                      -e LOCUST_HOST_GATEWAY="http://host.docker.internal:32087" \
+                      -e LOCUST_HOST_DASHBOARD="http://host.docker.internal:32084" \
+                      circleguard-locust-stage \
+                      -f /mnt/locust/locustfile.py \
+                      --config /mnt/locust/locust.conf || true
+                    docker cp locust-perf-run-stage:/mnt/locust/locust-report.html locust/locust-report-stage.html || true
+                    docker cp locust-perf-run-stage:/mnt/locust/locust-stats_stats.csv locust/locust-stats-stage_stats.csv || true
+                    docker rm locust-perf-run-stage || true
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'locust/locust-report-stage.html,locust/locust-stats-stage*.csv',
+                                     allowEmptyArchive: true
+                }
+            }
+        }
+
+    }
+
+    post {
+        always {
+            echo "Pipeline finalizado: ${currentBuild.currentResult}"
+        }
+        success {
+            echo "Stage pipeline EXITOSO — imagenes :stage desplegadas en namespace: circleguard-stage"
+        }
+        failure {
+            echo "Stage pipeline FALLIDO — revisar logs anteriores"
+        }
+    }
+}

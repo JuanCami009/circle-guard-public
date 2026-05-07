@@ -15,6 +15,13 @@ TEST_JWT="${TEST_JWT:-}"
 TEST_ANON_ID="${TEST_ANON_ID:-test-anon-id-placeholder}"
 TEST_QR_TOKEN="${TEST_QR_TOKEN:-test-qr-token-placeholder}"
 
+PORT_NOTIFICATION="${E2E_PORT_NOTIFICATION:-31082}"
+PORT_DASHBOARD="${E2E_PORT_DASHBOARD:-31084}"
+PORT_FILE="${E2E_PORT_FILE:-31085}"
+PORT_FORM="${E2E_PORT_FORM:-31086}"
+PORT_GATEWAY="${E2E_PORT_GATEWAY:-31087}"
+PORT_PROMOTION="${E2E_PORT_PROMOTION:-31088}"
+
 PASS=0
 FAIL=0
 SUITE_START=$(date +%s)
@@ -124,12 +131,12 @@ echo "============================================================"
 echo ""
 echo ">>> FLUJO 1: Health Check de todos los servicios"
 start_flow "FLUJO 1: Health Check (6 servicios)"
-check_alive "notification-service" "http://$HOST:31082/api/v1/notifications"
-check_alive "dashboard-service"    "http://$HOST:31084/api/v1/analytics/summary"
-check_alive "file-service"         "http://$HOST:31085/api/v1/files"
-check_alive "form-service"         "http://$HOST:31086/api/v1/questionnaires"
-check_alive "gateway-service"      "http://$HOST:31087/api/v1/gate/health"
-check_alive "promotion-service"    "http://$HOST:31088/api/v1/health/status/ping"
+check_alive "notification-service" "http://$HOST:$PORT_NOTIFICATION/api/v1/notifications"
+check_alive "dashboard-service"    "http://$HOST:$PORT_DASHBOARD/api/v1/analytics/summary"
+check_alive "file-service"         "http://$HOST:$PORT_FILE/api/v1/files"
+check_alive "form-service"         "http://$HOST:$PORT_FORM/api/v1/questionnaires"
+check_alive "gateway-service"      "http://$HOST:$PORT_GATEWAY/api/v1/gate/health"
+check_alive "promotion-service"    "http://$HOST:$PORT_PROMOTION/api/v1/health/status/ping"
 end_flow
 
 # ------------------------------------------------------------------
@@ -139,7 +146,7 @@ echo ""
 echo ">>> FLUJO 2: Consulta de formularios activos (form-service)"
 start_flow "FLUJO 2: Listado de formularios (form-service)"
 check_http "form-service GET /api/v1/questionnaires" \
-    "http://$HOST:31086/api/v1/questionnaires" \
+    "http://$HOST:$PORT_FORM/api/v1/questionnaires" \
     "200 401 403"
 end_flow
 
@@ -150,7 +157,7 @@ echo ""
 echo ">>> FLUJO 3: Consulta de analytics en dashboard-service"
 start_flow "FLUJO 3: Analytics summary (dashboard-service)"
 check_http "dashboard-service GET /api/v1/analytics/summary" \
-    "http://$HOST:31084/api/v1/analytics/summary" \
+    "http://$HOST:$PORT_DASHBOARD/api/v1/analytics/summary" \
     "200 401 403"
 end_flow
 
@@ -163,7 +170,7 @@ start_flow "FLUJO 4: Validación QR (gateway-service)"
 if [ -n "$TEST_QR_TOKEN" ] && [ "$TEST_QR_TOKEN" != "test-qr-token-placeholder" ]; then
     check_json_field \
         "gateway-service POST /api/v1/gate/validate" \
-        "http://$HOST:31087/api/v1/gate/validate" \
+        "http://$HOST:$PORT_GATEWAY/api/v1/gate/validate" \
         "POST" \
         "{\"token\":\"$TEST_QR_TOKEN\"}" \
         "status" \
@@ -180,7 +187,7 @@ echo ""
 echo ">>> FLUJO 5: Consulta de estado de salud (promotion-service)"
 start_flow "FLUJO 5: Health status (promotion-service)"
 check_http "promotion-service GET /api/v1/health/status/$TEST_ANON_ID" \
-    "http://$HOST:31088/api/v1/health/status/$TEST_ANON_ID" \
+    "http://$HOST:$PORT_PROMOTION/api/v1/health/status/$TEST_ANON_ID" \
     "200 401 403 404"
 end_flow
 

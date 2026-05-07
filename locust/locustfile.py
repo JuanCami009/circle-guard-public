@@ -46,7 +46,7 @@ class HealthStatusUser(HttpUser):
     Simula usuarios (estudiantes/staff) consultando su estado de salud.
     Es la operación de mayor volumen: ocurre en cada acceso al campus.
     """
-    host = os.getenv("LOCUST_HOST", "http://host.docker.internal:31088")
+    host = os.getenv("LOCUST_HOST_PROMOTION", os.getenv("LOCUST_HOST", "http://host.docker.internal:31088"))
     wait_time = between(1, 3)
     weight = 5
 
@@ -77,7 +77,7 @@ class SurveySubmissionUser(HttpUser):
     Simula usuarios completando el formulario diario de síntomas.
     Flujo de menor frecuencia pero de mayor impacto en el grafo.
     """
-    host = os.getenv("LOCUST_HOST", "http://host.docker.internal:31086")
+    host = os.getenv("LOCUST_HOST_FORM", os.getenv("LOCUST_HOST", "http://host.docker.internal:31086"))
     wait_time = between(3, 8)
     weight = 2
 
@@ -115,7 +115,7 @@ class GatewayValidationUser(HttpUser):
     Simula lectores de QR en cada punto de acceso del campus.
     Es el cuello de botella más critico: todos los ingresos pasan por aquí.
     """
-    host = os.getenv("LOCUST_HOST", "http://host.docker.internal:31087")
+    host = os.getenv("LOCUST_HOST_GATEWAY", os.getenv("LOCUST_HOST", "http://host.docker.internal:31087"))
     wait_time = between(0.5, 2)
     weight = 8
 
@@ -141,7 +141,7 @@ class DashboardAnalyticsUser(HttpUser):
     Simula coordinadores de salud revisando el panel de analítica.
     Frecuencia baja, pero las consultas pueden ser costosas.
     """
-    host = os.getenv("LOCUST_HOST", "http://host.docker.internal:31084")
+    host = os.getenv("LOCUST_HOST_DASHBOARD", os.getenv("LOCUST_HOST", "http://host.docker.internal:31084"))
     wait_time = between(5, 15)
     weight = 1
 

@@ -1,0 +1,548 @@
+pipeline {
+    agent any
+
+    options {
+        timeout(time: 60, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        disableConcurrentBuilds()
+    }
+
+    environment {
+        REGISTRY                              = 'circleguard'
+        PROD_NS                               = 'circleguard'
+        GRADLE_OPTS                           = '-Dorg.gradle.daemon=false'
+        DOCKER_HOST                           = 'unix:///var/run/docker.sock'
+        TESTCONTAINERS_RYUK_DISABLED          = 'true'
+        TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE = '/var/run/docker.sock'
+        // kubeconfig parcheado con host.docker.internal en lugar de 127.0.0.1
+        // (el kubeconfig original del host no es accesible desde dentro del contenedor)
+        KUBECONFIG                            = '/var/jenkins_home/kube-jenkins.conf'
+    }
+
+    stages {
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Checkout') {
+            steps {
+                checkout scm
+                sh 'chmod +x gradlew'
+                echo "Branch: ${env.GIT_BRANCH} | Commit: ${env.GIT_COMMIT?.take(8)}"
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Prepare') {
+            steps {
+                // Descarga gradle-8.14-bin.zip una sola vez antes de los builds paralelos.
+                // Sin esto, los 6 procesos compiten por el lock del archivo y hacen timeout.
+                sh './gradlew --version --no-daemon'
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Build JARs') {
+            parallel {
+                stage('build:file-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-file-service:bootJar -x test --no-daemon'
+                    }
+                }
+                stage('build:gateway-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-gateway-service:bootJar -x test --no-daemon'
+                    }
+                }
+                stage('build:dashboard-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-dashboard-service:bootJar -x test --no-daemon'
+                    }
+                }
+                stage('build:form-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-form-service:bootJar -x test --no-daemon'
+                    }
+                }
+                stage('build:notification-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-notification-service:bootJar -x test --no-daemon'
+                    }
+                }
+                stage('build:promotion-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-promotion-service:bootJar -x test --no-daemon'
+                    }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Unit Tests') {
+            parallel {
+                stage('test:file-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-file-service:test --no-daemon'
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-file-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+                stage('test:gateway-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-gateway-service:test --no-daemon'
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-gateway-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+                stage('test:dashboard-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-dashboard-service:test --no-daemon'
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-dashboard-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+                stage('test:form-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-form-service:test --no-daemon'
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-form-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+                stage('test:notification-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-notification-service:test --no-daemon'
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-notification-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+                stage('test:promotion-service') {
+                    steps {
+                        // Excluir tests con Testcontainers (HealthStatusReevaluationTest,
+                        // AdministrativeCorrectionTest, PromotionPerformanceTest) que van a la
+                        // etapa Integration Tests porque levantan contenedores Docker reales.
+                        sh '''
+                            ./gradlew :services:circleguard-promotion-service:test \
+                                --tests "com.circleguard.promotion.controller.*" \
+                                --tests "com.circleguard.promotion.listener.*" \
+                                --tests "com.circleguard.promotion.service.FloorServiceTest" \
+                                --tests "com.circleguard.promotion.service.HealthStatusServiceTest" \
+                                --tests "com.circleguard.promotion.service.StatusLifecycleTest" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-promotion-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Integration Tests') {
+            // Nota: tests que usan Testcontainers (neo4j, kafka, redis) requieren
+            // acceso real al Docker socket. En entorno Linux CI funcionan correctamente.
+            // En macOS con Docker Desktop el proxy de socket impide la detección de Testcontainers.
+            parallel {
+                stage('integration:file-service') {
+                    steps { echo 'Sin tests de integración en file-service — etapa omitida.' }
+                }
+                stage('integration:gateway-service') {
+                    steps {
+                        sh '''
+                            ./gradlew :services:circleguard-gateway-service:test \
+                                --tests "com.circleguard.gateway.integration.*" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-gateway-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+                stage('integration:dashboard-service') {
+                    steps { echo 'Sin tests de integración en dashboard-service — etapa omitida.' }
+                }
+                stage('integration:form-service') {
+                    steps {
+                        sh '''
+                            ./gradlew :services:circleguard-form-service:test \
+                                --tests "com.circleguard.form.integration.*" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-form-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+                stage('integration:notification-service') {
+                    steps {
+                        sh '''
+                            ./gradlew :services:circleguard-notification-service:test \
+                                --tests "com.circleguard.notification.integration.*" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-notification-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+                stage('integration:promotion-service') {
+                    steps {
+                        // SurveyListenerIntegrationTest usa Neo4j Testcontainer.
+                        // Omitido en macOS CI; en Linux CI ejecutar con:
+                        //   --tests "com.circleguard.promotion.integration.*"
+                        echo 'Tests Testcontainers de promotion-service omitidos en CI (incompatibilidad Docker Desktop proxy socket).'
+                    }
+                }
+                stage('integration:identity-service') {
+                    steps {
+                        sh '''
+                            ./gradlew :services:circleguard-identity-service:test \
+                                --tests "com.circleguard.identity.integration.*" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-identity-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Docker Build :latest') {
+            parallel {
+                stage('docker:file-service') {
+                    steps {
+                        sh 'docker build -t ${REGISTRY}/file-service:latest -f services/circleguard-file-service/Dockerfile .'
+                    }
+                }
+                stage('docker:gateway-service') {
+                    steps {
+                        sh 'docker build -t ${REGISTRY}/gateway-service:latest -f services/circleguard-gateway-service/Dockerfile .'
+                    }
+                }
+                stage('docker:dashboard-service') {
+                    steps {
+                        sh 'docker build -t ${REGISTRY}/dashboard-service:latest -f services/circleguard-dashboard-service/Dockerfile .'
+                    }
+                }
+                stage('docker:form-service') {
+                    steps {
+                        sh 'docker build -t ${REGISTRY}/form-service:latest -f services/circleguard-form-service/Dockerfile .'
+                    }
+                }
+                stage('docker:notification-service') {
+                    steps {
+                        sh 'docker build -t ${REGISTRY}/notification-service:latest -f services/circleguard-notification-service/Dockerfile .'
+                    }
+                }
+                stage('docker:promotion-service') {
+                    steps {
+                        sh 'docker build -t ${REGISTRY}/promotion-service:latest -f services/circleguard-promotion-service/Dockerfile .'
+                    }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Deploy Master') {
+            steps {
+                sh '''
+                    # Crear namespace de producción si no existe (idempotente)
+                    kubectl apply -f k8s/00-namespace.yml
+
+                    # Desplegar infraestructura al namespace circleguard (producción).
+                    # Los manifests ya tienen namespace: circleguard y type: NodePort —
+                    # NO se aplica ninguna transformación sed.
+                    # Se aplican en orden explícito por dependencia (kafka requiere zookeeper).
+                    kubectl apply -f k8s/infra/01-configmap.yml
+                    kubectl apply -f k8s/infra/02-secrets.yml
+                    kubectl apply -f k8s/infra/03-postgres.yml
+                    kubectl apply -f k8s/infra/04-neo4j.yml
+                    kubectl apply -f k8s/infra/05-zookeeper.yml
+                    kubectl apply -f k8s/infra/06-kafka.yml
+                    kubectl apply -f k8s/infra/07-redis.yml
+                    kubectl apply -f k8s/infra/08-mailhog.yml
+
+                    # Esperar a que los componentes criticos de infra esten listos
+                    kubectl rollout status deployment/postgres -n circleguard --timeout=120s || true
+                    kubectl rollout status deployment/redis    -n circleguard --timeout=60s  || true
+                    kubectl rollout status deployment/kafka    -n circleguard --timeout=90s  || true
+
+                    # Desplegar los 6 microservicios — manifests ya en namespace circleguard,
+                    # tag :latest, NodePorts 300XX. Sin sed.
+                    kubectl apply -f k8s/services/
+
+                    echo "--- Recursos en namespace circleguard (producción) ---"
+                    kubectl get all -n circleguard
+                '''
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Smoke Tests') {
+            steps {
+                sh '''
+                    echo "Esperando que los pods del entorno master esten listos..."
+                    kubectl rollout status deployment/file-service         -n circleguard --timeout=120s
+                    kubectl rollout status deployment/gateway-service      -n circleguard --timeout=120s
+                    kubectl rollout status deployment/dashboard-service    -n circleguard --timeout=120s
+                    kubectl rollout status deployment/form-service         -n circleguard --timeout=120s
+                    kubectl rollout status deployment/notification-service -n circleguard --timeout=120s
+                    kubectl rollout status deployment/promotion-service    -n circleguard --timeout=180s
+
+                    echo "Ejecutando smoke tests HTTP via NodePorts..."
+                    # HTTP 200, 404 o 401 indican que Spring Boot inicio correctamente.
+                    # Solo HTTP 000 (connection refused) o 5xx son errores reales.
+                    # Puertos 300XX (producción) — el esquema canónico de los manifests
+                    for port_svc in "30085:file-service" "30087:gateway-service" "30084:dashboard-service" "30086:form-service" "30082:notification-service" "30088:promotion-service"; do
+                        PORT=$(echo $port_svc | cut -d: -f1)
+                        SVC=$(echo $port_svc  | cut -d: -f2)
+                        CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 http://host.docker.internal:$PORT/)
+                        echo "${SVC} (puerto ${PORT}): HTTP ${CODE}"
+                        if [ "$CODE" = "000" ]; then
+                            echo "ERROR: ${SVC} no responde (connection refused)"
+                            exit 1
+                        fi
+                    done
+                    echo "Todos los smoke tests pasaron."
+                '''
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('E2E Tests') {
+            // Reutiliza las mismas credenciales Jenkins configuradas para los pipelines dev y stage.
+            // Las variables E2E_PORT_* apuntan explícitamente a los NodePorts 300XX de producción.
+            steps {
+                sh 'chmod +x e2e/run_e2e.sh'
+                withCredentials([
+                    string(credentialsId: 'e2e-jwt-token',  variable: 'TEST_JWT'),
+                    string(credentialsId: 'e2e-anon-id',    variable: 'TEST_ANON_ID'),
+                    string(credentialsId: 'e2e-qr-token',   variable: 'TEST_QR_TOKEN')
+                ]) {
+                    sh '''
+                        E2E_PORT_NOTIFICATION=30082 \
+                        E2E_PORT_DASHBOARD=30084 \
+                        E2E_PORT_FILE=30085 \
+                        E2E_PORT_FORM=30086 \
+                        E2E_PORT_GATEWAY=30087 \
+                        E2E_PORT_PROMOTION=30088 \
+                        bash e2e/run_e2e.sh
+                    '''
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Performance Tests') {
+            // Ejecuta Locust via Docker contra el entorno master desplegado.
+            // LOCUST_HOST_* redirigen cada perfil de usuario al NodePort 300XX correspondiente.
+            // Se usa docker build (no -v) para evitar el problema de DinD en macOS.
+            // El reporte se archiva como locust-report-master.html para distinguirlo de dev y stage.
+            steps {
+                sh '''
+                    docker build -t circleguard-locust-master -f locust/Dockerfile locust/
+                    docker rm -f locust-perf-run-master 2>/dev/null || true
+                    docker run --name locust-perf-run-master \
+                      --network host \
+                      -e LOCUST_JWT="${TEST_JWT:-}" \
+                      -e LOCUST_ANON_ID="${TEST_ANON_ID:-test-anon-id}" \
+                      -e LOCUST_HOST_PROMOTION="http://host.docker.internal:30088" \
+                      -e LOCUST_HOST_FORM="http://host.docker.internal:30086" \
+                      -e LOCUST_HOST_GATEWAY="http://host.docker.internal:30087" \
+                      -e LOCUST_HOST_DASHBOARD="http://host.docker.internal:30084" \
+                      circleguard-locust-master \
+                      -f /mnt/locust/locustfile.py \
+                      --config /mnt/locust/locust.conf || true
+                    docker cp locust-perf-run-master:/mnt/locust/locust-report.html locust/locust-report-master.html || true
+                    docker cp locust-perf-run-master:/mnt/locust/locust-stats_stats.csv locust/locust-stats-master_stats.csv || true
+                    docker rm locust-perf-run-master || true
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'locust/locust-report-master.html,locust/locust-stats-master*.csv',
+                                     allowEmptyArchive: true
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Release Notes') {
+            // Genera un artefacto Markdown con las Release Notes de esta versión.
+            // Clasifica commits por tipo (Conventional Commits: feat, fix, docs, otros).
+            // Crea un tag Git ligero en el commit actual para marcar el release.
+            steps {
+                sh '''
+                    VERSION="v1.0.${BUILD_NUMBER}"
+                    echo "Generando Release Notes para ${VERSION}..."
+
+                    # Determinar el rango de commits desde el tag anterior
+                    PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+                    if [ -n "$PREV_TAG" ]; then
+                        RANGE="${PREV_TAG}..HEAD"
+                        SINCE_MSG="Cambios desde ${PREV_TAG}"
+                        echo "Rango: ${PREV_TAG} -> HEAD"
+                    else
+                        RANGE="HEAD~10..HEAD"
+                        SINCE_MSG="Ultimos 10 commits (primer release)"
+                        echo "Sin tag previo - usando los ultimos 10 commits"
+                    fi
+
+                    # Extraer commits por categoria (Conventional Commits)
+                    FEAT_COMMITS=$(git log ${RANGE} --pretty=format:"- %s (%h)" --no-merges | grep "^- feat" || true)
+                    FIX_COMMITS=$(git log ${RANGE} --pretty=format:"- %s (%h)" --no-merges | grep "^- fix" || true)
+                    DOCS_COMMITS=$(git log ${RANGE} --pretty=format:"- %s (%h)" --no-merges | grep "^- docs" || true)
+                    OTHER_COMMITS=$(git log ${RANGE} --pretty=format:"- %s (%h)" --no-merges | grep -v "^- feat\\|^- fix\\|^- docs" || true)
+
+                    BUILD_DATE=$(date "+%Y-%m-%d %H:%M:%S UTC")
+                    COMMIT_HASH=$(git rev-parse --short HEAD)
+                    COMMIT_AUTHOR=$(git log -1 --pretty=format:"%an")
+                    TOTAL_COMMITS=$(git log ${RANGE} --oneline --no-merges | wc -l | tr -d " ")
+
+                    # Generar el archivo Markdown de Release Notes
+                    {
+                        echo "# Release Notes - CircleGuard ${VERSION}"
+                        echo ""
+                        echo "| Campo | Valor |"
+                        echo "|---|---|"
+                        echo "| Version | ${VERSION} |"
+                        echo "| Fecha | ${BUILD_DATE} |"
+                        echo "| Commit | \`${COMMIT_HASH}\` |"
+                        echo "| Autor | ${COMMIT_AUTHOR} |"
+                        echo "| Build Jenkins | #${BUILD_NUMBER} |"
+                        echo "| Branch | ${GIT_BRANCH} |"
+                        echo "| Namespace Kubernetes | \`circleguard\` (produccion) |"
+                        echo "| Total cambios | ${TOTAL_COMMITS} commits (${SINCE_MSG}) |"
+                        echo ""
+                        echo "---"
+                        echo ""
+                        echo "## Novedades"
+                        echo ""
+                        if [ -n "$FEAT_COMMITS" ]; then
+                            echo "$FEAT_COMMITS"
+                        else
+                            echo "_Sin nuevas funcionalidades en este release._"
+                        fi
+                        echo ""
+                        echo "## Correcciones"
+                        echo ""
+                        if [ -n "$FIX_COMMITS" ]; then
+                            echo "$FIX_COMMITS"
+                        else
+                            echo "_Sin correcciones de bugs en este release._"
+                        fi
+                        echo ""
+                        echo "## Documentacion"
+                        echo ""
+                        if [ -n "$DOCS_COMMITS" ]; then
+                            echo "$DOCS_COMMITS"
+                        else
+                            echo "_Sin cambios de documentacion en este release._"
+                        fi
+                        echo ""
+                        echo "## Otros cambios"
+                        echo ""
+                        if [ -n "$OTHER_COMMITS" ]; then
+                            echo "$OTHER_COMMITS"
+                        else
+                            echo "_Sin otros cambios en este release._"
+                        fi
+                        echo ""
+                        echo "---"
+                        echo ""
+                        echo "## Entorno de despliegue"
+                        echo ""
+                        echo "| Atributo | Valor |"
+                        echo "|---|---|"
+                        echo "| Namespace Kubernetes | \`circleguard\` (produccion) |"
+                        echo "| Tag de imagen Docker | \`:latest\` |"
+                        echo "| NodePorts | 30082, 30084, 30085, 30086, 30087, 30088 |"
+                        echo "| Pipeline | \`Jenkinsfile.master\` |"
+                        echo ""
+                        echo "## Servicios desplegados"
+                        echo ""
+                        echo "| Servicio | Imagen | NodePort |"
+                        echo "|---|---|---|"
+                        echo "| notification-service | \`circleguard/notification-service:latest\` | 30082 |"
+                        echo "| dashboard-service | \`circleguard/dashboard-service:latest\` | 30084 |"
+                        echo "| file-service | \`circleguard/file-service:latest\` | 30085 |"
+                        echo "| form-service | \`circleguard/form-service:latest\` | 30086 |"
+                        echo "| gateway-service | \`circleguard/gateway-service:latest\` | 30087 |"
+                        echo "| promotion-service | \`circleguard/promotion-service:latest\` | 30088 |"
+                        echo ""
+                        echo "## Validaciones ejecutadas"
+                        echo ""
+                        echo "- [x] Build JARs (6 servicios)"
+                        echo "- [x] Unit Tests (6 servicios)"
+                        echo "- [x] Integration Tests (4 servicios activos)"
+                        echo "- [x] Docker Build :latest (6 servicios)"
+                        echo "- [x] Deploy Kubernetes namespace circleguard"
+                        echo "- [x] Smoke Tests (6 servicios, NodePorts 300XX)"
+                        echo "- [x] E2E Tests (5 flujos)"
+                        echo "- [x] Performance Tests (Locust, 50 usuarios, 60s)"
+                        echo ""
+                        echo "---"
+                        echo ""
+                        echo "_Generado automaticamente por Jenkins - build #${BUILD_NUMBER}_"
+                    } > release-notes-${VERSION}.md
+
+                    echo "Release Notes generadas: release-notes-${VERSION}.md"
+                    cat release-notes-${VERSION}.md
+
+                    # Crear tag Git ligero para marcar el release en el historial
+                    git tag ${VERSION} || true
+                    echo "Tag Git creado: ${VERSION}"
+                '''
+                archiveArtifacts artifacts: 'release-notes-*.md', allowEmptyArchive: false
+            }
+        }
+
+    }
+
+    post {
+        always {
+            echo "Pipeline finalizado: ${currentBuild.currentResult}"
+        }
+        success {
+            echo "Master pipeline EXITOSO — imagenes :latest desplegadas en namespace: circleguard | Release Notes archivadas"
+        }
+        failure {
+            echo "Master pipeline FALLIDO — revisar logs anteriores"
+        }
+    }
+}

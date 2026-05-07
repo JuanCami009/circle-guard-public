@@ -456,7 +456,7 @@ redis-...                               1/1     Running   0          ...
 zookeeper-...                           1/1     Running   0          ...
 ```
 
-![kubectl get pods circleguard - todos los pods Running](../screenshots/kubectl-pods-master.png)
+![kubectl get pods circleguard - todos los pods Running](../screenshots/![alt text](image.png).png)
 
 ### 5.3 Smoke Tests
 

@@ -433,7 +433,7 @@ pipeline {
                     COMMIT_HASH=$(git rev-parse --short HEAD)
                     COMMIT_AUTHOR=$(git log -1 --pretty=format:"%an")
                     TOTAL_COMMITS=$(git log ${RANGE} --oneline --no-merges | wc -l | tr -d " ")
-                    # BT evita usar \` dentro de sh '''...''' que el parser Groovy rechaza
+                    # BT genera el backtick sin escapar para evitar error del parser Groovy
                     BT=$(printf '`')
 
                     # Generar el archivo Markdown de Release Notes

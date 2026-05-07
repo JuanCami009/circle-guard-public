@@ -288,6 +288,27 @@ La infraestructura se convierte de NodePort a ClusterIP para evitar un conflicto
 | NodePort Neo4j browser (infra) | NodePort `30474` | ClusterIP (eliminado) |
 | NodePort MailHog UI (infra) | NodePort `30025` | ClusterIP (eliminado) |
 
+#### Readiness Probe en los manifiestos de servicio
+
+**Problema detectado en la primera ejecución del pipeline stage:** `kubectl rollout status` reportaba `successfully rolled out` inmediatamente después de que el proceso del contenedor arrancaba — antes de que Spring Boot terminara de inicializarse (~27 segundos en form-service). El smoke test corría en esa ventana y recibía HTTP 000 (connection refused) porque Tomcat aún no había enlazado al puerto.
+
+Sin readiness probe, Kubernetes marca un pod como `Ready` en cuanto el contenedor inicia su proceso, sin verificar que la aplicación esté realmente lista para recibir tráfico.
+
+**Solución:** Se agregó `readinessProbe` con `tcpSocket` a los 6 manifiestos de servicio en `k8s/services/`:
+
+```yaml
+readinessProbe:
+  tcpSocket:
+    port: 808X        # puerto del servicio (8082, 8084, 8085, 8086, 8087, 8088)
+  initialDelaySeconds: 20   # espera inicial antes del primer check
+  periodSeconds: 5          # verifica cada 5 segundos
+  failureThreshold: 12      # falla definitiva tras 12 checks consecutivos fallidos (80s total)
+```
+
+Con esta configuración, `kubectl rollout status` solo retorna "successfully rolled out" cuando el puerto TCP está abierto y aceptando conexiones — lo que garantiza que Spring Boot terminó de inicializarse. Los smoke tests subsiguientes siempre encuentran los servicios listos.
+
+Se eligió `tcpSocket` en lugar de `httpGet` porque los endpoints HTTP de estos servicios requieren autenticación (retornan 401/403), y Kubernetes interpreta cualquier respuesta que no sea 2xx/3xx como falla del probe. `tcpSocket` solo verifica que el puerto esté abierto, lo cual es exactamente la condición necesaria para pasar el smoke test.
+
 ### 4.8 Smoke Tests
 
 ```bash

@@ -35,6 +35,12 @@ spec:
           imagePullPolicy: Never
           ports:
             - containerPort: 8088
+          readinessProbe:
+            tcpSocket:
+              port: 8088
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            failureThreshold: 12
           envFrom:
             - configMapRef:
                 name: circleguard-config

@@ -420,6 +420,11 @@ pipeline {
     post {
         always {
             echo "Pipeline finalizado: ${currentBuild.currentResult}"
+            sh '''
+                echo "Escalando deployments del namespace ${STAGE_NS} a 0 replicas..."
+                kubectl scale deployment --all -n ${STAGE_NS} --replicas=0 || true
+                kubectl get deployment -n ${STAGE_NS} || true
+            '''
         }
         success {
             echo "Stage pipeline EXITOSO — imagenes :stage desplegadas en namespace: circleguard-stage"

@@ -1,158 +1,80 @@
-# 🛡️ CircleGuard Monorepo
+# CircleGuard - Taller 2: Pruebas y Lanzamiento
 
-**Absolute Privacy. High-Speed Containment. Secure Campus.**
-
-CircleGuard is a state-of-the-art university contact tracing and fencing system designed to identify interconnected contact groups ("Circles") and apply rapid health fences while preserving individual anonymity.
+**Video de evidencia:** https://youtu.be/D9iUHjesDdI
 
 ---
 
-## 🌟 Vision & Mission
+## Resumen por Punto
 
-Our vision is a university campus where health containment speed outpaces lab confirmation timelines without compromising student privacy. CircleGuard leverages campus-native intelligence—class schedules and WiFi infrastructure—to deliver a human-validated, graph-based protection ecosystem.
+### [Punto 1 - Configuración de Jenkins, Docker y Kubernetes (10%)](docs/01-punto1-configuracion.md)
 
-### Key Differentiators
-- **Privacy-as-Code**: Zero real-name exposure outside a secure Health Center vault.
-- **Recursive Containment**: Status promotion cascades (Suspect → Probable → Confirmed) that trigger in milliseconds.
-- **Campus Integration**: Smart check-ins using existing WiFi AP triangulation and Bluetooth Low Energy (BLE).
+Se configuró el entorno de CI/CD completo desde cero. Jenkins se levanta como contenedor Docker con una imagen personalizada (`jenkins/Dockerfile`) que incluye los binarios de `docker` y `kubectl` para poder construir imágenes y desplegar en Kubernetes desde dentro del pipeline. Se configuró como Multibranch Pipeline apuntando al repositorio. Kubernetes corre en Docker Desktop. Se seleccionaron 6 microservicios interconectados: `file-service`, `gateway-service`, `dashboard-service`, `form-service`, `notification-service` y `promotion-service`.
 
----
+### [Punto 2 - Pipeline Dev Environment (15%)](docs/02-punto2-pipeline-dev.md)
 
-## 📊 Success Metrics
+Se implementó `Jenkinsfile.dev` con 10 etapas: checkout, prepare, build JARs (paralelo), unit tests (paralelo), integration tests (paralelo), Docker build con tag `:dev` (paralelo), deploy al namespace `circleguard-dev`, smoke tests via `curl`, y placeholders para E2E y performance. Los manifests de Kubernetes existentes se reutilizan con transformaciones `sed` para adaptar namespace, tag de imagen y NodePorts al rango `310XX`.
 
-| Metric | Target | Measurement |
-|:---|:---|:---|
-| **Containment Speed** | < 60 Seconds | Automated test of promotion engine cascade |
-| **Privacy Compliance** | 100% Anonymity | Penetration test on graph database (Zero real names) |
-| **Check-in Adoption** | > 70% | Analytics on scheduled class contact validation |
-| **False Positive Rate** | < 15% | Post-fence surveys of actual vs. suspected contact |
-| **System Uptime** | 99.5% | 7:00 AM – 10:00 PM (Academic Peak Hours) |
+### [Punto 3 - Pruebas: Unitarias, Integración, E2E y Rendimiento (30%)](docs/03-punto3-pruebas.md)
 
----
+Se implementaron 4 niveles de prueba:
 
-## 🏗️ Architecture Overview
+- **5 pruebas unitarias**: `GraphCleanupTaskTest`, `LocationResolutionServiceTest` (promotion), `JwtTokenServiceTest`, `QrTokenServiceTest` (auth), `AuditLogServiceTest` (notification). Sin Spring context, usando Mockito puro.
+- **5 pruebas de integración**: `SurveyListenerIntegrationTest` (promotion+Kafka), `ExposureNotificationIntegrationTest` (notification), `GatewayValidationIntegrationTest` (gateway), `QuestionnaireJpaIntegrationTest` (form), `IdentityVaultServiceIntegrationTest` (identity). Usan `@SpringBootTest` + Testcontainers.
+- **5 flujos E2E**: script `e2e/run_e2e.sh` parametrizable por variables de entorno (`E2E_PORT_*`), cubre registro de archivo, validación de gateway, envío de formulario, notificación y consulta de dashboard.
+- **Pruebas de rendimiento**: `locust/locustfile.py` con 4 escenarios (promotion, form, gateway, dashboard), parametrizable via `LOCUST_HOST_*`. Incluye análisis de resultados y reporte HTML.
 
-CircleGuard follows a **Microservice Architecture** built on a **Hybrid Data Model**.
+### [Punto 4 - Pipeline Stage Environment (15%)](docs/04-punto4-stage.md)
 
-### Core Engine
-1. **Status Promotion Machine**: Uses **Neo4j** for recursive graph traversals to identify contacts within a 14-day temporal window.
-2. **Anonymization Vault**: A segregated **PostgreSQL** vault handles salted-hash identity mapping, compliant with **FERPA** regulations.
-3. **Event-Driven Core**: **Apache Kafka** manages asynchronous status changes, audit logs, and notification dispatches.
+Se implementó `Jenkinsfile.stage` replicando la estructura del pipeline dev con tres cambios de eje: namespace `circleguard-stage`, tag `:stage`, NodePorts `320XX`. A diferencia del pipeline dev, las etapas de E2E y performance son funcionales (no placeholders): `run_e2e.sh` y `locustfile.py` reciben las variables de entorno apuntando al rango `320XX`. Todos los manifests se transforman con `sed` igual que en dev.
 
-### Services Directory
-- **Auth Service**: Dual-chain LDAP (University) / Local (Guest) auth with Dynamic RBAC.
-- **Identity Service**: Cryptographic vault for anonymizing real identities.
-- **Promotion Service**: The status engine (Recursive Graph Processing).
-- **Notification Service**: Multi-channel dispatcher (Push/Email/SMS).
-- **Form Service**: Dynamic health questionnaire engine.
-- **Gateway Service**: Campus entry validation via signed, time-limited QR tokens.
-- **Dashboard Service**: Geospatial hotspot analytics (Privacy-preserving).
-- **File Service**: Secure certificate and document storage (S3-compatible).
+### [Punto 5 - Pipeline Master/Producción (15%)](docs/05-punto5-master.md)
+
+Se implementó `Jenkinsfile.master` para despliegue en el namespace canónico `circleguard`. A diferencia de dev y stage, **no aplica transformaciones `sed`**: los manifests ya tienen namespace `circleguard`, tag `:latest` y NodePorts `300XX`. Se agregó la etapa **Release Notes** (etapa 11): genera un artefacto Markdown clasificando commits por tipo (Conventional Commits), incluye metadata del build y crea un tag Git ligero para marcar el release en el historial. Al finalizar el pipeline, los deployments se escalan a cero (`kubectl scale --replicas=0`) para conservar recursos del clúster local.
+
+### Punto 6 - Documentación y Video (15%) - [docs/](docs/)
+
+Documentación completa en `docs/` con un archivo por punto. Video de evidencia en https://youtu.be/D9iUHjesDdI mostrando ejecución de los pipelines dev, stage y master, resultados de pruebas y generación de release notes.
 
 ---
 
-## 🛠️ Technical Stack
+## Archivos por Punto
 
-| Layer | Technology | Rationale |
-|:---|:---|:---|
-| **Backend** | Spring Boot 4 / Java 21 | Enterprise-grade maturity & low-latency Jakarta EE support. |
-| **Graph DB** | Neo4j 5.26 | High-performance recursive traversals unreachable with SQL. |
-| **Relational DB**| PostgreSQL 16 | ACID compliant storage for identity and configuration. |
-| **Message Bus** | Apache Kafka 7.6 | Persistent, audit-trailed event log for status dispatches. |
-| **Caching** | Redis 7.2 | L2 distributed cache for rapid entry-gate status validation. |
-| **Mobile/Web** | Expo (React Native) | Unified codebase across iOS, Android, and Browser. |
-| **Infra** | Kubernetes | Orchestration for high availability and auto-scaling. |
+Archivo / Ruta | Descripción |
+:---|:---|
+| [`docs/01-punto1-configuracion.md`](docs/01-punto1-configuracion.md) | Documentación Punto 1 |
+| [`docs/02-punto2-pipeline-dev.md`](docs/02-punto2-pipeline-dev.md) | Documentación Punto 2 |
+| [`docs/03-punto3-pruebas.md`](docs/03-punto3-pruebas.md) | Documentación Punto 3 |
+| [`docs/04-punto4-stage.md`](docs/04-punto4-stage.md) | Documentación Punto 4 |
+| [`docs/05-punto5-master.md`](docs/05-punto5-master.md) | Documentación Punto 5 |
 
 ---
 
-## 🗺️ Roadmap
+## Microservicios Seleccionados
 
-### Phase 1: MVP — The Intelligence Core (Current)
-- [x] Status Promotion Machine (Suspect → Probable → Confirmed).
-- [x] Temporal graph with 14-day TTL edges.
-- [x] Multi-channel fence notifications (Push/Email/SMS).
-- [ ] Health Center de-identification console.
-
-### Phase 2: Growth — Spatial Intelligence
-- [ ] WiFi AP triangulation integration.
-- [ ] Campus entry validation (Gatekeeper) QR integration.
-- [ ] LMS integration for "Remote Attendance" status automation.
-
-### Phase 3: Vision — Full Ecosystem
-- [ ] Off-campus circle detection via P2P Bluetooth.
-- [ ] Global Health Dashboard with hotspot visualization.
-- [ ] Lab API bridge for automated test result ingestion.
+| Servicio | Puerto prod | Puerto dev | Puerto stage |
+|:---|:---:|:---:|:---:|
+| notification-service | 30082 | 31082 | 32082 |
+| dashboard-service | 30084 | 31084 | 32084 |
+| file-service | 30085 | 31085 | 32085 |
+| form-service | 30086 | 31086 | 32086 |
+| gateway-service | 30087 | 31087 | 32087 |
+| promotion-service | 30088 | 31088 | 32088 |
 
 ---
 
-## 💻 Local Development
+## Stack Tecnológico
 
-### 1. Infrastructure
-Ensure Docker is installed, then start the middleware stack:
-```bash
-docker-compose -f docker-compose.dev.yml up -d
-```
-*Middleware includes: PostgreSQL, Neo4j, Kafka, Zookeeper, Redis, and OpenLDAP.*
-
-### 2. Build & Run
-CircleGuard uses Gradle for parallel builds across services:
-```bash
-# Start all microservices in parallel
-./gradlew bootRun --parallel
-
-# Start a specific service
-./gradlew :services:<service-name>:bootRun
-```
-
-### 3. API Exploration
-Every service exposes an OpenAPI 3.0 interface. Once running, visit:
-`http://localhost:<service-port>/swagger-ui/index.html`
-
----
-
-## 📱 Frontend Development
-
-The frontend is built using **Expo (React Native)**, supporting iOS, Android, and Web from a single codebase located in `/mobile`.
-
-### 1. Prerequisites
-Ensure you have Node.js installed and dependencies loaded:
-```bash
-cd mobile
-npm install
-```
-
-### 2. Run the Application
-You can run the app in various modes depending on your target platform:
-
-| Platform | Command | Notes |
-|:---|:---|:---|
-| **Development Menu** | `npm run start` | Opens the Expo Go start-up menu. |
-| **Android** | `npm run android` | Requires Android Studio / Emulator or a connected device. |
-| **iOS** | `npm run ios` | Requires macOS with Xcode / Simulator installed. |
-| **Web Browser** | `npm run web` | Launches the dashboard/app in your default browser. |
-
-### 3. Testing
-To run frontend unit and component tests:
-```bash
-npm run test
-```
-
----
-
-## 🧪 Testing
-
-We maintain high system integrity via multi-level testing:
-
-| Command | Scope |
+| Capa | Tecnología |
 |:---|:---|
-| `./gradlew test` | Full system suite (Unit + Integration) |
-| `./gradlew :services:<name>:test` | Single service testing |
-
-**Note**: Integration tests use **Testcontainers** to spawn ephemeral Neo4j and PostgreSQL instances for zero-side-effect validation.
-
----
-
-## 🔐 Privacy & Compliance
-
-- **FERPA Compliance**: Student identities are never stored in the contact graph.
-- **Right to be Forgotten**: Users can trigger complete data purging via the Identity Vault.
-- **Temporal Privacy**: All contact edges are automatically purged after 14 days.
+| Backend | Spring Boot / Java 21 |
+| Graph DB | Neo4j 5.26 |
+| Relational DB | PostgreSQL 16 |
+| Message Bus | Apache Kafka |
+| Caching | Redis 7.2 |
+| CI/CD | Jenkins (Multibranch Pipeline) |
+| Contenedores | Docker |
+| Orquestación | Kubernetes (Docker Desktop) |
+| Pruebas backend | JUnit 5 + Mockito + Testcontainers |
+| Pruebas E2E | Bash + curl |
+| Pruebas rendimiento | Locust |
+| Mobile | Expo (React Native) |

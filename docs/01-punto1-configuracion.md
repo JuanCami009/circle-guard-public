@@ -5,10 +5,10 @@
 Este documento describe la configuración del entorno de desarrollo para el proyecto CircleGuard, que incluye:
 
 - **Jenkins**: servidor de CI/CD para orquestar pipelines de construcción y despliegue.
-- **Docker**: containerización de los 6 microservicios seleccionados mediante Dockerfiles multi-stage.
+- **Docker**: containerización de los 8 microservicios mediante Dockerfiles runtime (single-stage `eclipse-temurin:21-jre-alpine`).
 - **Kubernetes**: clúster de Docker Desktop para el despliegue de los servicios e infraestructura.
 
-Los 6 microservicios seleccionados son:
+Los 8 microservicios del proyecto son:
 
 | Servicio | Puerto | Dependencias clave |
 |---|---|---|
@@ -18,6 +18,8 @@ Los 6 microservicios seleccionados son:
 | `circleguard-form-service` | 8086 | PostgreSQL, Kafka |
 | `circleguard-notification-service` | 8082 | Kafka, SMTP |
 | `circleguard-promotion-service` | 8088 | PostgreSQL, Neo4j, Redis, Kafka |
+| `circleguard-auth-service` | 8180 | PostgreSQL, OpenLDAP, JWT |
+| `circleguard-identity-service` | 8083 | PostgreSQL |
 
 ## 1. Configuración de Jenkins
 
@@ -156,6 +158,12 @@ docker build -t circleguard/notification-service:latest \
 
 docker build -t circleguard/promotion-service:latest \
   -f services/circleguard-promotion-service/Dockerfile .
+
+docker build -t circleguard/auth-service:latest \
+  -f services/circleguard-auth-service/Dockerfile .
+
+docker build -t circleguard/identity-service:latest \
+  -f services/circleguard-identity-service/Dockerfile .
 ```
 
 ### 2.3 Verificar las imágenes construidas
@@ -168,17 +176,19 @@ docker images | grep circleguard
 
 ### 2.4 Uso con Docker Compose
 
-El archivo `docker-compose.yml` en la raíz del repositorio unifica toda la infraestructura (PostgreSQL, Neo4j, Kafka, Redis, OpenLDAP, MailHog) y los 6 microservicios en un único stack:
+El archivo `docker-compose.yml` en la raíz del repositorio provee **solo infraestructura** (PostgreSQL, Neo4j, Kafka, Redis, OpenLDAP, MailHog). Es la forma recomendada para desarrollar localmente con Gradle, sin necesidad de Kubernetes:
 
 ```bash
-# Levantar todo (construye las imágenes automáticamente si no existen)
-docker compose up --build -d
+# Levantar infraestructura (sin microservicios)
+docker compose up -d
 
-# Solo construir imágenes sin levantar
-docker compose build
+# Correr un microservicio localmente contra esa infraestructura
+./gradlew :services:circleguard-auth-service:bootRun
 ```
 
-![Docker Compose con todos los contenedores en estado running](../screenshots/docker-compose-ps.png)
+> **Nota:** Los microservicios ya no están en `docker-compose.yml`. Para desplegar todos los servicios de forma integrada, usar Jenkins + Kubernetes (`k8s/`).
+
+![Docker Compose con infraestructura en estado running](../screenshots/docker-compose-ps.png)
 
 ---
 
@@ -199,14 +209,17 @@ k8s/
 │   ├── 05-zookeeper.yml          # Zookeeper (requerido por Kafka)
 │   ├── 06-kafka.yml              # Apache Kafka 7.6
 │   ├── 07-redis.yml              # Redis 7.2
-│   └── 08-mailhog.yml            # MailHog (SMTP de desarrollo)
+│   ├── 08-mailhog.yml            # MailHog (SMTP de desarrollo)
+│   └── 09-openldap.yml           # OpenLDAP (requerido por auth-service)
 └── services/
     ├── 09-file-service.yml
     ├── 10-gateway-service.yml
     ├── 11-dashboard-service.yml
     ├── 12-form-service.yml
     ├── 13-notification-service.yml
-    └── 14-promotion-service.yml
+    ├── 14-promotion-service.yml
+    ├── 15-auth-service.yml
+    └── 16-identity-service.yml
 ```
 
 ### 3.2 Aplicar los manifests al clúster
@@ -225,7 +238,7 @@ kubectl apply -f k8s/infra/
 kubectl wait --for=condition=ready pod -l app=postgres -n circleguard --timeout=120s
 kubectl wait --for=condition=ready pod -l app=neo4j -n circleguard --timeout=120s
 
-# Desplegar los 6 microservicios
+# Desplegar los 8 microservicios
 kubectl apply -f k8s/services/
 ```
 
@@ -267,7 +280,9 @@ curl -s -o /dev/null -w "dashboard-service:  %{http_code}\n" http://localhost:30
 curl -s -o /dev/null -w "form-service:       %{http_code}\n" http://localhost:30086/
 curl -s -o /dev/null -w "notification-svc:   %{http_code}\n" http://localhost:30082/
 curl -s -o /dev/null -w "promotion-service:  %{http_code}\n" http://localhost:30088/
+curl -s -o /dev/null -w "auth-service:       %{http_code}\n" http://localhost:30180/
+curl -s -o /dev/null -w "identity-service:   %{http_code}\n" http://localhost:30083/
 ```
 
-![Respuestas HTTP de los 6 microservicios vía NodePorts](../screenshots/curl-services.png)
+![Respuestas HTTP de los 8 microservicios vía NodePorts](../screenshots/curl-services.png)
 

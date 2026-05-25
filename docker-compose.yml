@@ -1,6 +1,10 @@
 services:
 
   # ── Infraestructura ─────────────────────────────────────────────────────────
+  # Usar este archivo para levantar la infraestructura local junto con Gradle:
+  #   docker compose up -d
+  #   ./gradlew :services:circleguard-auth-service:bootRun
+  # Para el ciclo CI/CD completo, usar Jenkins + Kubernetes (k8s/).
 
   postgres:
     image: postgres:16
@@ -46,7 +50,6 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      # Usar el nombre de servicio para comunicación entre contenedores
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
@@ -77,114 +80,6 @@ services:
     ports:
       - "1025:1025"
       - "8025:8025"
-
-  # ── Microservicios ───────────────────────────────────────────────────────────
-
-  file-service:
-    build:
-      context: .
-      dockerfile: services/circleguard-file-service/Dockerfile
-    image: circleguard/file-service:latest
-    ports:
-      - "8085:8085"
-    environment:
-      SERVER_PORT: 8085
-
-  gateway-service:
-    build:
-      context: .
-      dockerfile: services/circleguard-gateway-service/Dockerfile
-    image: circleguard/gateway-service:latest
-    ports:
-      - "8087:8087"
-    environment:
-      SERVER_PORT: 8087
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PORT: "6379"
-      SPRING_DATA_REDIS_REPOSITORIES_ENABLED: "false"
-      JWT_SECRET: "my-super-secret-dev-key-32-chars-long-12345678"
-      QR_SECRET: "my-qr-secret-key-for-dev-1234567890"
-    depends_on:
-      - redis
-
-  dashboard-service:
-    build:
-      context: .
-      dockerfile: services/circleguard-dashboard-service/Dockerfile
-    image: circleguard/dashboard-service:latest
-    ports:
-      - "8084:8084"
-    environment:
-      SERVER_PORT: 8084
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/circleguard_dashboard
-      SPRING_DATASOURCE_USERNAME: admin
-      SPRING_DATASOURCE_PASSWORD: password
-    depends_on:
-      - postgres
-
-  form-service:
-    build:
-      context: .
-      dockerfile: services/circleguard-form-service/Dockerfile
-    image: circleguard/form-service:latest
-    ports:
-      - "8086:8086"
-    environment:
-      SERVER_PORT: 8086
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/circleguard_form
-      SPRING_DATASOURCE_USERNAME: admin
-      SPRING_DATASOURCE_PASSWORD: password
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-    depends_on:
-      - postgres
-      - kafka
-
-  notification-service:
-    build:
-      context: .
-      dockerfile: services/circleguard-notification-service/Dockerfile
-    image: circleguard/notification-service:latest
-    ports:
-      - "8082:8082"
-    environment:
-      SERVER_PORT: 8082
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      SPRING_KAFKA_LISTENER_MISSING_TOPICS_FATAL: "false"
-      SPRING_MAIL_HOST: mailhog
-      SPRING_MAIL_PORT: "1025"
-      SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: "false"
-      SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "false"
-      JWT_SECRET: "my-super-secret-dev-key-32-chars-long-12345678"
-      QR_SECRET: "my-qr-secret-key-for-dev-1234567890"
-    depends_on:
-      - kafka
-      - mailhog
-
-  promotion-service:
-    build:
-      context: .
-      dockerfile: services/circleguard-promotion-service/Dockerfile
-    image: circleguard/promotion-service:latest
-    ports:
-      - "8088:8088"
-    environment:
-      SERVER_PORT: 8088
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/circleguard_promotion
-      SPRING_DATASOURCE_USERNAME: admin
-      SPRING_DATASOURCE_PASSWORD: password
-      SPRING_NEO4J_URI: bolt://neo4j:7687
-      SPRING_NEO4J_AUTHENTICATION_USERNAME: neo4j
-      SPRING_NEO4J_AUTHENTICATION_PASSWORD: password
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_REPOSITORIES_ENABLED: "false"
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      SPRING_KAFKA_LISTENER_MISSING_TOPICS_FATAL: "false"
-      JWT_SECRET: "my-super-secret-dev-key-32-chars-long-12345678"
-    depends_on:
-      - postgres
-      - neo4j
-      - redis
-      - kafka
 
 volumes:
   pgdata:

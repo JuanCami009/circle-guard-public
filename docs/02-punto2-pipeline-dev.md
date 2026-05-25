@@ -4,18 +4,18 @@
 
 Este documento describe el pipeline de CI/CD para el entorno de desarrollo del proyecto CircleGuard. El pipeline (`Jenkinsfile.dev`) se configura como un **Multibranch Pipeline** en Jenkins, lo que permite que cada branch del repositorio tenga su propio pipeline aislado con historial de builds independiente.
 
-El pipeline ejecuta las siguientes etapas para los 6 microservicios seleccionados:
+El pipeline ejecuta las siguientes etapas para los 8 microservicios del proyecto:
 
 | # | Etapa | Tipo | Servicios involucrados | Estrategia |
 |---|---|---|---|---|
 | 1 | Checkout | Secuencial | — | `checkout scm` + `chmod +x gradlew` |
 | 2 | Prepare | Secuencial | — | `./gradlew --version` para pre-descargar el wrapper |
-| 3 | Build JARs | Paralelo | 6 | `bootJar -x test --no-daemon` |
-| 4 | Unit Tests | Paralelo | 6 | `@WebMvcTest` / MockMvc / Mockito + JUnit XML |
-| 5 | Integration Tests | Paralelo | 6 | 4 servicios con tests reales (no-Testcontainers); `promotion-service` omitido por incompatibilidad Docker Desktop - ver sección 3.5 |
-| 6 | Docker Build `:dev` | Paralelo | 6 | `docker build` copiando JAR pre-compilado, tag `:dev` |
-| 7 | Deploy Dev | Secuencial | 6 + infra | `kubectl apply` con `sed` para namespace, imagen y NodePorts |
-| 8 | Smoke Tests | Secuencial | 6 | `curl` a `host.docker.internal` NodePorts 31082–31088 |
+| 3 | Build JARs | Paralelo | 8 | `bootJar -x test --no-daemon` |
+| 4 | Unit Tests | Paralelo | 8 | `@WebMvcTest` / MockMvc / Mockito + JUnit XML |
+| 5 | Integration Tests | Paralelo | 8 | 6 servicios con tests reales (no-Testcontainers); `promotion-service` omitido por incompatibilidad Docker Desktop - ver sección 3.5 |
+| 6 | Docker Build `:dev` | Paralelo | 8 | `docker build` copiando JAR pre-compilado, tag `:dev` |
+| 7 | Deploy Dev | Secuencial | 8 + infra | `kubectl apply` con `sed` para namespace, imagen y NodePorts |
+| 8 | Smoke Tests | Secuencial | 8 | `curl` a `host.docker.internal` NodePorts 31082–31088, 31083, 31180 |
 | 9 | E2E Tests | Placeholder | — | Implementado en Punto 3 |
 | 10 | Performance Tests | Placeholder | — | Implementado en Punto 3 |
 

@@ -2,7 +2,7 @@
 
 ## Resumen
 
-Este documento describe el pipeline de CI/CD para el entorno de stage del proyecto CircleGuard. El pipeline (`Jenkinsfile.stage`) opera como un **Multibranch Pipeline** en Jenkins y despliega los 6 microservicios en el namespace `circleguard-stage`, un entorno pre-producción aislado tanto del entorno de desarrollo (`circleguard-dev`) como de producción (`circleguard`).
+Este documento describe el pipeline de CI/CD para el entorno de stage del proyecto CircleGuard. El pipeline (`Jenkinsfile.stage`) opera como un **Multibranch Pipeline** en Jenkins y despliega los 8 microservicios en el namespace `circleguard-stage`, un entorno pre-producción aislado tanto del entorno de desarrollo (`circleguard-dev`) como de producción (`circleguard`).
 
 El pipeline replica la estructura completa del pipeline de desarrollo (Punto 2) ajustando tres ejes: namespace, tag de imagen Docker y rango de NodePorts. Además, se realizaron modificaciones backward-compatible al script de E2E (`e2e/run_e2e.sh`) y al locustfile (`locust/locustfile.py`) para permitir que ambas herramientas apunten al entorno correcto mediante variables de entorno.
 
@@ -10,12 +10,12 @@ El pipeline replica la estructura completa del pipeline de desarrollo (Punto 2) 
 |---|---|---|---|---|
 | 1 | Checkout | Secuencial | - | `checkout scm` + `chmod +x gradlew` |
 | 2 | Prepare | Secuencial | - | `./gradlew --version` para pre-descargar el wrapper |
-| 3 | Build JARs | Paralelo | 6 | `bootJar -x test --no-daemon` |
-| 4 | Unit Tests | Paralelo | 6 | JUnit 5 + Mockito + JUnit XML |
-| 5 | Integration Tests | Paralelo | 6 | 4 servicios con tests reales; `promotion-service` omitido (Docker Desktop) |
-| 6 | Docker Build `:stage` | Paralelo | 6 | `docker build`, tag `:stage` |
-| 7 | Deploy Stage | Secuencial | 6 + infra | `kubectl apply` con `sed` para namespace, imagen y NodePorts |
-| 8 | Smoke Tests | Secuencial | 6 | `curl` a `host.docker.internal` NodePorts 32082–32088 |
+| 3 | Build JARs | Paralelo | 8 | `bootJar -x test --no-daemon` |
+| 4 | Unit Tests | Paralelo | 8 | JUnit 5 + Mockito + JUnit XML |
+| 5 | Integration Tests | Paralelo | 8 | 6 servicios con tests reales; `promotion-service` omitido (Docker Desktop) |
+| 6 | Docker Build `:stage` | Paralelo | 8 | `docker build`, tag `:stage` |
+| 7 | Deploy Stage | Secuencial | 8 + infra | `kubectl apply` con `sed` para namespace, imagen y NodePorts |
+| 8 | Smoke Tests | Secuencial | 8 | `curl` a `host.docker.internal` NodePorts 32082–32088, 32083, 32180 |
 | 9 | E2E Tests | Secuencial | 6 | `run_e2e.sh` con `E2E_PORT_*=320XX` |
 | 10 | Performance Tests | Secuencial | 4 | Locust con `LOCUST_HOST_*` apuntando a 320XX |
 
@@ -43,11 +43,13 @@ El entorno stage se despliega en el namespace `circleguard-stage`, aislado tanto
 | Namespace | `circleguard` | `circleguard-dev` | `circleguard-stage` |
 | Tag de imagen | `:latest` | `:dev` | `:stage` |
 | NodePort notification-service | 30082 | 31082 | 32082 |
+| NodePort identity-service | 30083 | 31083 | 32083 |
 | NodePort dashboard-service | 30084 | 31084 | 32084 |
 | NodePort file-service | 30085 | 31085 | 32085 |
 | NodePort form-service | 30086 | 31086 | 32086 |
 | NodePort gateway-service | 30087 | 31087 | 32087 |
 | NodePort promotion-service | 30088 | 31088 | 32088 |
+| NodePort auth-service | 30180 | 31180 | 32180 |
 | NodePorts infra | NodePort (Neo4j, MailHog) | ClusterIP | ClusterIP |
 | Manifests base | `k8s/infra/` + `k8s/services/` | Mismos, transformados con `sed` | Mismos, transformados con `sed` |
 

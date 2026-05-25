@@ -72,6 +72,16 @@ pipeline {
                         sh './gradlew :services:circleguard-promotion-service:bootJar -x test --no-daemon'
                     }
                 }
+                stage('build:auth-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-auth-service:bootJar -x test --no-daemon'
+                    }
+                }
+                stage('build:identity-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-identity-service:bootJar -x test --no-daemon'
+                    }
+                }
             }
         }
 
@@ -155,6 +165,28 @@ pipeline {
                         }
                     }
                 }
+                stage('test:auth-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-auth-service:test --no-daemon'
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-auth-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+                stage('test:identity-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-identity-service:test --no-daemon'
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-identity-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
             }
         }
 
@@ -223,6 +255,21 @@ pipeline {
                         echo 'Tests Testcontainers de promotion-service omitidos en CI (incompatibilidad Docker Desktop proxy socket).'
                     }
                 }
+                stage('integration:auth-service') {
+                    steps {
+                        sh '''
+                            ./gradlew :services:circleguard-auth-service:test \
+                                --tests "com.circleguard.auth.integration.*" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-auth-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
                 stage('integration:identity-service') {
                     steps {
                         sh '''
@@ -274,6 +321,16 @@ pipeline {
                         sh 'docker build -t ${REGISTRY}/promotion-service:latest -f services/circleguard-promotion-service/Dockerfile .'
                     }
                 }
+                stage('docker:auth-service') {
+                    steps {
+                        sh 'docker build -t ${REGISTRY}/auth-service:latest -f services/circleguard-auth-service/Dockerfile .'
+                    }
+                }
+                stage('docker:identity-service') {
+                    steps {
+                        sh 'docker build -t ${REGISTRY}/identity-service:latest -f services/circleguard-identity-service/Dockerfile .'
+                    }
+                }
             }
         }
 
@@ -296,13 +353,14 @@ pipeline {
                     kubectl apply -f k8s/infra/06-kafka.yml
                     kubectl apply -f k8s/infra/07-redis.yml
                     kubectl apply -f k8s/infra/08-mailhog.yml
+                    kubectl apply -f k8s/infra/09-openldap.yml
 
                     # Esperar a que los componentes criticos de infra esten listos
                     kubectl rollout status deployment/postgres -n circleguard --timeout=120s || true
                     kubectl rollout status deployment/redis    -n circleguard --timeout=60s  || true
                     kubectl rollout status deployment/kafka    -n circleguard --timeout=90s  || true
 
-                    # Desplegar los 6 microservicios — manifests ya en namespace circleguard,
+                    # Desplegar los 8 microservicios — manifests ya en namespace circleguard,
                     # tag :latest, NodePorts 300XX. Sin sed.
                     kubectl apply -f k8s/services/
 
@@ -323,12 +381,14 @@ pipeline {
                     kubectl rollout status deployment/form-service         -n circleguard --timeout=120s
                     kubectl rollout status deployment/notification-service -n circleguard --timeout=120s
                     kubectl rollout status deployment/promotion-service    -n circleguard --timeout=180s
+                    kubectl rollout status deployment/auth-service         -n circleguard --timeout=180s
+                    kubectl rollout status deployment/identity-service     -n circleguard --timeout=120s
 
                     echo "Ejecutando smoke tests HTTP via NodePorts..."
                     # HTTP 200, 404 o 401 indican que Spring Boot inicio correctamente.
                     # Solo HTTP 000 (connection refused) o 5xx son errores reales.
                     # Puertos 300XX (producción) — el esquema canónico de los manifests
-                    for port_svc in "30085:file-service" "30087:gateway-service" "30084:dashboard-service" "30086:form-service" "30082:notification-service" "30088:promotion-service"; do
+                    for port_svc in "30085:file-service" "30087:gateway-service" "30084:dashboard-service" "30086:form-service" "30082:notification-service" "30088:promotion-service" "30180:auth-service" "30083:identity-service"; do
                         PORT=$(echo $port_svc | cut -d: -f1)
                         SVC=$(echo $port_svc  | cut -d: -f2)
                         CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 http://host.docker.internal:$PORT/)
@@ -493,7 +553,7 @@ pipeline {
                         echo "|---|---|"
                         echo "| Namespace Kubernetes | ${BT}circleguard${BT} (produccion) |"
                         echo "| Tag de imagen Docker | ${BT}:latest${BT} |"
-                        echo "| NodePorts | 30082, 30084, 30085, 30086, 30087, 30088 |"
+                        echo "| NodePorts | 30082, 30083, 30084, 30085, 30086, 30087, 30088, 30180 |"
                         echo "| Pipeline | ${BT}Jenkinsfile.master${BT} |"
                         echo ""
                         echo "## Servicios desplegados"
@@ -506,15 +566,17 @@ pipeline {
                         echo "| form-service | ${BT}circleguard/form-service:latest${BT} | 30086 |"
                         echo "| gateway-service | ${BT}circleguard/gateway-service:latest${BT} | 30087 |"
                         echo "| promotion-service | ${BT}circleguard/promotion-service:latest${BT} | 30088 |"
+                        echo "| auth-service | ${BT}circleguard/auth-service:latest${BT} | 30180 |"
+                        echo "| identity-service | ${BT}circleguard/identity-service:latest${BT} | 30083 |"
                         echo ""
                         echo "## Validaciones ejecutadas"
                         echo ""
-                        echo "- [x] Build JARs (6 servicios)"
-                        echo "- [x] Unit Tests (6 servicios)"
-                        echo "- [x] Integration Tests (4 servicios activos)"
-                        echo "- [x] Docker Build :latest (6 servicios)"
+                        echo "- [x] Build JARs (8 servicios)"
+                        echo "- [x] Unit Tests (8 servicios)"
+                        echo "- [x] Integration Tests (6 servicios activos)"
+                        echo "- [x] Docker Build :latest (8 servicios)"
                         echo "- [x] Deploy Kubernetes namespace circleguard"
-                        echo "- [x] Smoke Tests (6 servicios, NodePorts 300XX)"
+                        echo "- [x] Smoke Tests (8 servicios, NodePorts 300XX)"
                         echo "- [x] E2E Tests (5 flujos)"
                         echo "- [x] Performance Tests (Locust, 50 usuarios, 60s)"
                         echo ""

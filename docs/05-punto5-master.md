@@ -2,7 +2,7 @@
 
 ## Resumen
 
-Este documento describe el pipeline de CI/CD para el entorno de **producción** del proyecto CircleGuard. El pipeline (`Jenkinsfile.master`) opera como un **Multibranch Pipeline** en Jenkins y despliega los 6 microservicios en el namespace `circleguard`, el namespace canónico de producción del clúster.
+Este documento describe el pipeline de CI/CD para el entorno de **producción** del proyecto CircleGuard. El pipeline (`Jenkinsfile.master`) opera como un **Multibranch Pipeline** en Jenkins y despliega los 8 microservicios en el namespace `circleguard`, el namespace canónico de producción del clúster.
 
 A diferencia de los pipelines dev y stage, el pipeline master **no aplica transformaciones `sed`** sobre los manifests de Kubernetes: los archivos en `k8s/infra/` y `k8s/services/` ya tienen definidos el namespace `circleguard`, el tag `:latest` y los NodePorts `300XX`. Esto simplifica el paso de despliegue y elimina una fuente de errores operacionales.
 
@@ -12,12 +12,12 @@ La adición clave de este pipeline respecto a los anteriores es la etapa **Relea
 |---|---|---|---|---|
 | 1 | Checkout | Secuencial | - | `checkout scm` + `chmod +x gradlew` |
 | 2 | Prepare | Secuencial | - | `./gradlew --version` para pre-descargar el wrapper |
-| 3 | Build JARs | Paralelo | 6 | `bootJar -x test --no-daemon` |
-| 4 | Unit Tests | Paralelo | 6 | JUnit 5 + Mockito + JUnit XML |
-| 5 | Integration Tests | Paralelo | 6 | 4 servicios con tests reales; `promotion-service` omitido (Docker Desktop) |
-| 6 | Docker Build `:latest` | Paralelo | 6 | `docker build`, tag `:latest` |
-| 7 | Deploy Master | Secuencial | 6 + infra | `kubectl apply` directo - sin `sed` |
-| 8 | Smoke Tests | Secuencial | 6 | `curl` a `host.docker.internal` NodePorts 30082–30088 |
+| 3 | Build JARs | Paralelo | 8 | `bootJar -x test --no-daemon` |
+| 4 | Unit Tests | Paralelo | 8 | JUnit 5 + Mockito + JUnit XML |
+| 5 | Integration Tests | Paralelo | 8 | 6 servicios con tests reales; `promotion-service` omitido (Docker Desktop) |
+| 6 | Docker Build `:latest` | Paralelo | 8 | `docker build`, tag `:latest` |
+| 7 | Deploy Master | Secuencial | 8 + infra | `kubectl apply` directo - sin `sed` |
+| 8 | Smoke Tests | Secuencial | 8 | `curl` a `host.docker.internal` NodePorts 30082–30088, 30083, 30180 |
 | 9 | E2E Tests | Secuencial | 6 | `run_e2e.sh` con `E2E_PORT_*=300XX` |
 | 10 | Performance Tests | Secuencial | 4 | Locust con `LOCUST_HOST_*` apuntando a 300XX |
 | 11 | Release Notes | Secuencial | - | `git log` → Markdown clasificado → artefacto archivado + tag Git |
@@ -48,11 +48,13 @@ El entorno master se despliega en el namespace `circleguard`, el namespace canó
 | Namespace | `circleguard` | `circleguard-stage` | `circleguard-dev` |
 | Tag de imagen | `:latest` | `:stage` | `:dev` |
 | NodePort notification-service | **30082** | 32082 | 31082 |
+| NodePort identity-service | **30083** | 32083 | 31083 |
 | NodePort dashboard-service | **30084** | 32084 | 31084 |
 | NodePort file-service | **30085** | 32085 | 31085 |
 | NodePort form-service | **30086** | 32086 | 31086 |
 | NodePort gateway-service | **30087** | 32087 | 31087 |
 | NodePort promotion-service | **30088** | 32088 | 31088 |
+| NodePort auth-service | **30180** | 32180 | 31180 |
 | NodePorts infra | **NodePort** (Neo4j 30474, MailHog 30025) | ClusterIP | ClusterIP |
 | Manifests base | `k8s/infra/` + `k8s/services/` | Mismos, transformados con `sed` | Mismos, transformados con `sed` |
 

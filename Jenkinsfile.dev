@@ -72,6 +72,16 @@ pipeline {
                         sh './gradlew :services:circleguard-promotion-service:bootJar -x test --no-daemon'
                     }
                 }
+                stage('build:auth-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-auth-service:bootJar -x test --no-daemon'
+                    }
+                }
+                stage('build:identity-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-identity-service:bootJar -x test --no-daemon'
+                    }
+                }
             }
         }
 
@@ -155,6 +165,28 @@ pipeline {
                         }
                     }
                 }
+                stage('test:auth-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-auth-service:test --no-daemon'
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-auth-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
+                stage('test:identity-service') {
+                    steps {
+                        sh './gradlew :services:circleguard-identity-service:test --no-daemon'
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-identity-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
             }
         }
 
@@ -223,6 +255,21 @@ pipeline {
                         echo 'Tests Testcontainers de promotion-service omitidos en CI (incompatibilidad Docker Desktop proxy socket).'
                     }
                 }
+                stage('integration:auth-service') {
+                    steps {
+                        sh '''
+                            ./gradlew :services:circleguard-auth-service:test \
+                                --tests "com.circleguard.auth.integration.*" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-auth-service/build/test-results/test/*.xml'
+                        }
+                    }
+                }
                 stage('integration:identity-service') {
                     steps {
                         sh '''
@@ -274,6 +321,16 @@ pipeline {
                         sh 'docker build -t ${REGISTRY}/promotion-service:dev -f services/circleguard-promotion-service/Dockerfile .'
                     }
                 }
+                stage('docker:auth-service') {
+                    steps {
+                        sh 'docker build -t ${REGISTRY}/auth-service:dev -f services/circleguard-auth-service/Dockerfile .'
+                    }
+                }
+                stage('docker:identity-service') {
+                    steps {
+                        sh 'docker build -t ${REGISTRY}/identity-service:dev -f services/circleguard-identity-service/Dockerfile .'
+                    }
+                }
             }
         }
 
@@ -313,6 +370,8 @@ pipeline {
                             -e 's/nodePort: 30086/nodePort: 31086/g' \
                             -e 's/nodePort: 30087/nodePort: 31087/g' \
                             -e 's/nodePort: 30088/nodePort: 31088/g' \
+                            -e 's/nodePort: 30180/nodePort: 31180/g' \
+                            -e 's/nodePort: 30083/nodePort: 31083/g' \
                             "$f" | kubectl apply -f -
                     done
 
@@ -333,12 +392,14 @@ pipeline {
                     kubectl rollout status deployment/form-service         -n circleguard-dev --timeout=120s
                     kubectl rollout status deployment/notification-service -n circleguard-dev --timeout=120s
                     kubectl rollout status deployment/promotion-service    -n circleguard-dev --timeout=180s
+                    kubectl rollout status deployment/auth-service         -n circleguard-dev --timeout=180s
+                    kubectl rollout status deployment/identity-service     -n circleguard-dev --timeout=120s
 
                     echo "Ejecutando smoke tests HTTP via NodePorts..."
                     # HTTP 200, 404 o 401 indican que Spring Boot inicio correctamente.
                     # Solo HTTP 000 (connection refused) o 5xx son errores reales.
                     # Puertos 310XX (dev) en lugar de 300XX (prod) para evitar conflictos de NodePort
-                    for port_svc in "31085:file-service" "31087:gateway-service" "31084:dashboard-service" "31086:form-service" "31082:notification-service" "31088:promotion-service"; do
+                    for port_svc in "31085:file-service" "31087:gateway-service" "31084:dashboard-service" "31086:form-service" "31082:notification-service" "31088:promotion-service" "31180:auth-service" "31083:identity-service"; do
                         PORT=$(echo $port_svc | cut -d: -f1)
                         SVC=$(echo $port_svc  | cut -d: -f2)
                         CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 http://host.docker.internal:$PORT/)

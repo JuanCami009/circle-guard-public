@@ -13,7 +13,7 @@ Ensure Docker Desktop is running on Windows and integrated with WSL.
 
 // turbo
 2. Start the infrastructure (PostgreSQL, Neo4j, Kafka, Redis, LDAP):
-   `docker-compose -f docker-compose.dev.yml up -d`
+   `docker compose up -d`
 
 ### 2. Backend Services (Spring Boot)
 Ensure the Gradle wrapper has executable permissions:

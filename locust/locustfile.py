@@ -1,6 +1,6 @@
 """
 Pruebas de rendimiento y estrés — CircleGuard
-Simula cuatro perfiles de usuario real del sistema.
+Simula seis perfiles de usuario real del sistema.
 
 Ejecución local:
     pip install locust
@@ -164,6 +164,73 @@ class DashboardAnalyticsUser(HttpUser):
             name="/api/v1/analytics/heatmap [GET]"
         ) as resp:
             _check(resp, "analytics-heatmap")
+
+
+# ── Perfil 5: Consulta de permisos y handoff de visitantes (auth-service) ────
+class AuthServiceUser(HttpUser):
+    """
+    Simula dos flujos de auth-service:
+    - notification-service consulta qué usuarios tienen un permiso dado.
+    - Visitantes con anonymousId ya asignado solicitan un JWT de acceso.
+    """
+    host = os.getenv("LOCUST_HOST_AUTH", os.getenv("LOCUST_HOST", "http://host.docker.internal:31180"))
+    wait_time = between(2, 6)
+    weight = 3
+
+    @task(4)
+    def get_users_by_permission(self):
+        with self.client.get(
+            "/api/v1/users/permissions/NOTIFY_PRIORITY_ALERTS",
+            catch_response=True,
+            name="/api/v1/users/permissions/[name]"
+        ) as resp:
+            _check(resp, "permission-lookup")
+
+    @task(1)
+    def visitor_handoff(self):
+        with self.client.post(
+            "/api/v1/auth/visitor/handoff",
+            json={"anonymousId": TEST_ANON_ID},
+            catch_response=True,
+            name="/api/v1/auth/visitor/handoff [POST]"
+        ) as resp:
+            _check(resp, "visitor-handoff")
+
+
+# ── Perfil 6: Anonimización de identidades (identity-service) ─────────────────
+class IdentityServiceUser(HttpUser):
+    """
+    Simula el flujo de registro e identidad:
+    - Visitantes que se registran por primera vez en recepción.
+    - Servicios internos que mapean identidades universitarias.
+    """
+    host = os.getenv("LOCUST_HOST_IDENTITY", os.getenv("LOCUST_HOST", "http://host.docker.internal:31083"))
+    wait_time = between(3, 8)
+    weight = 2
+
+    @task(3)
+    def register_visitor(self):
+        with self.client.post(
+            "/api/v1/identities/visitor",
+            json={
+                "name": f"Load Test Visitor {uuid.uuid4().hex[:6]}",
+                "email": f"load-{uuid.uuid4().hex[:8]}@circleguard.edu",
+                "reason_for_visit": "prueba-de-carga"
+            },
+            catch_response=True,
+            name="/api/v1/identities/visitor [POST]"
+        ) as resp:
+            _check(resp, "identity-visitor")
+
+    @task(1)
+    def map_identity(self):
+        with self.client.post(
+            "/api/v1/identities/map",
+            json={"realIdentity": f"load.user.{uuid.uuid4().hex[:8]}@universidad.edu"},
+            catch_response=True,
+            name="/api/v1/identities/map [POST]"
+        ) as resp:
+            _check(resp, "identity-map")
 
 
 # ── Listener: métricas al terminar ────────────────────────────────────────────

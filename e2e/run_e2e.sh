@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================================
 # Pruebas E2E — CircleGuard Dev Environment
-# Ejecuta 5 flujos contra los NodePorts del namespace circleguard-dev.
+# Ejecuta 7 flujos contra los NodePorts del namespace circleguard-dev.
 #
 # Variables de entorno:
 #   E2E_HOST       Host donde los NodePorts son accesibles (default: host.docker.internal)
@@ -21,6 +21,8 @@ PORT_FILE="${E2E_PORT_FILE:-31085}"
 PORT_FORM="${E2E_PORT_FORM:-31086}"
 PORT_GATEWAY="${E2E_PORT_GATEWAY:-31087}"
 PORT_PROMOTION="${E2E_PORT_PROMOTION:-31088}"
+PORT_AUTH="${E2E_PORT_AUTH:-31180}"
+PORT_IDENTITY="${E2E_PORT_IDENTITY:-31083}"
 
 PASS=0
 FAIL=0
@@ -93,6 +95,21 @@ check_alive() {
     fi
 }
 
+check_post_http() {
+    local label="$1" url="$2" body="$3" expected="$4"
+    local t_start t_end elapsed
+    t_start=$(date +%s)
+    CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
+        -X POST -H "Content-Type: application/json" -d "$body" "$url")
+    t_end=$(date +%s)
+    elapsed=$(( t_end - t_start ))
+    if echo "$expected" | grep -qw "$CODE"; then
+        log_pass "$label (HTTP $CODE, ${elapsed}s)"
+    else
+        log_fail "$label — esperado [$expected] obtenido HTTP $CODE (${elapsed}s)"
+    fi
+}
+
 check_json_field() {
     local label="$1" url="$2" method="$3" body="$4" field="$5" expected_value="$6"
     local t_start t_end elapsed RESPONSE VALUE
@@ -130,13 +147,15 @@ echo "============================================================"
 # ------------------------------------------------------------------
 echo ""
 echo ">>> FLUJO 1: Health Check de todos los servicios"
-start_flow "FLUJO 1: Health Check (6 servicios)"
+start_flow "FLUJO 1: Health Check (8 servicios)"
 check_alive "notification-service" "http://$HOST:$PORT_NOTIFICATION/api/v1/notifications"
 check_alive "dashboard-service"    "http://$HOST:$PORT_DASHBOARD/api/v1/analytics/summary"
 check_alive "file-service"         "http://$HOST:$PORT_FILE/api/v1/files"
 check_alive "form-service"         "http://$HOST:$PORT_FORM/api/v1/questionnaires"
 check_alive "gateway-service"      "http://$HOST:$PORT_GATEWAY/api/v1/gate/health"
 check_alive "promotion-service"    "http://$HOST:$PORT_PROMOTION/api/v1/health/status/ping"
+check_alive "auth-service"         "http://$HOST:$PORT_AUTH/api/v1/users/permissions/test"
+check_alive "identity-service"     "http://$HOST:$PORT_IDENTITY/api/v1/identities/lookup/00000000-0000-0000-0000-000000000000"
 end_flow
 
 # ------------------------------------------------------------------
@@ -191,6 +210,30 @@ start_flow "FLUJO 5: Health status (promotion-service)"
 check_http "promotion-service GET /api/v1/health/status/$TEST_ANON_ID" \
     "http://$HOST:$PORT_PROMOTION/api/v1/health/status/$TEST_ANON_ID" \
     "200 401 403 404"
+end_flow
+
+# ------------------------------------------------------------------
+# FLUJO 6: Consulta de usuarios por permiso (auth-service)
+# ------------------------------------------------------------------
+echo ""
+echo ">>> FLUJO 6: Consulta de usuarios por permiso (auth-service)"
+start_flow "FLUJO 6: Permission lookup (auth-service)"
+check_http "auth-service GET /api/v1/users/permissions/NOTIFY_PRIORITY_ALERTS" \
+    "http://$HOST:$PORT_AUTH/api/v1/users/permissions/NOTIFY_PRIORITY_ALERTS" \
+    "200 401 403"
+end_flow
+
+# ------------------------------------------------------------------
+# FLUJO 7: Registro de visitante anónimo (identity-service)
+# ------------------------------------------------------------------
+echo ""
+echo ">>> FLUJO 7: Registro de visitante anónimo (identity-service)"
+start_flow "FLUJO 7: Visitor registration (identity-service)"
+check_post_http \
+    "identity-service POST /api/v1/identities/visitor" \
+    "http://$HOST:$PORT_IDENTITY/api/v1/identities/visitor" \
+    '{"name":"E2E Visitor","email":"e2e@circleguard.edu","reason_for_visit":"prueba-e2e"}' \
+    "200 401 403"
 end_flow
 
 # ------------------------------------------------------------------

@@ -4,6 +4,10 @@ build/
 !**/src/**/build/
 **/build/
 
+# IDE compiled output (Eclipse / VS Code Java extension)
+bin/
+**/bin/
+
 # Java
 *.class
 *.jar

@@ -1,8 +1,5 @@
 package com.circleguard.auth.controller;
 
-import com.circleguard.auth.security.DualChainAuthenticationProvider;
-import com.circleguard.auth.security.JwtAuthenticationFilter;
-import com.circleguard.auth.security.SecurityConfig;
 import com.circleguard.auth.service.CustomUserDetailsService;
 import com.circleguard.auth.service.QrTokenService;
 import org.junit.jupiter.api.Test;
@@ -10,7 +7,6 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.context.annotation.Import;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -20,7 +16,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(QrTokenController.class)
-@Import(SecurityConfig.class)
 public class QrTokenControllerTest {
 
     private static final String TEST_UUID = "550e8400-e29b-41d4-a716-446655440000";
@@ -33,12 +28,6 @@ public class QrTokenControllerTest {
 
     @MockBean
     private CustomUserDetailsService customUserDetailsService;
-
-    @MockBean
-    private JwtAuthenticationFilter jwtAuthenticationFilter;
-
-    @MockBean
-    private DualChainAuthenticationProvider dualChainAuthenticationProvider;
 
     @Test
     @WithMockUser(username = TEST_UUID)

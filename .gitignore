@@ -63,3 +63,5 @@ terraform/scripts/localstack-data/
 terraform/envs/dev/*.secret.auto.tfvars
 terraform/envs/prod/*.secret.auto.tfvars
 terraform/envs/stage/*.secret.auto.tfvars
+# Kubeconfig files written by kind-cluster module
+terraform/envs/**/kubeconfig-*.yaml

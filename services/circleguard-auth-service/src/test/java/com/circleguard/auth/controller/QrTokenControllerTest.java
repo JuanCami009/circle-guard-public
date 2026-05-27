@@ -1,5 +1,7 @@
 package com.circleguard.auth.controller;
 
+import com.circleguard.auth.security.DualChainAuthenticationProvider;
+import com.circleguard.auth.security.JwtAuthenticationFilter;
 import com.circleguard.auth.security.SecurityConfig;
 import com.circleguard.auth.service.CustomUserDetailsService;
 import com.circleguard.auth.service.QrTokenService;
@@ -31,6 +33,12 @@ public class QrTokenControllerTest {
 
     @MockBean
     private CustomUserDetailsService customUserDetailsService;
+
+    @MockBean
+    private JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    @MockBean
+    private DualChainAuthenticationProvider dualChainAuthenticationProvider;
 
     @Test
     @WithMockUser(username = TEST_UUID)

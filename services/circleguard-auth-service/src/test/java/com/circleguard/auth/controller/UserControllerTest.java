@@ -2,6 +2,8 @@ package com.circleguard.auth.controller;
 
 import com.circleguard.auth.model.LocalUser;
 import com.circleguard.auth.repository.LocalUserRepository;
+import com.circleguard.auth.security.DualChainAuthenticationProvider;
+import com.circleguard.auth.security.JwtAuthenticationFilter;
 import com.circleguard.auth.security.SecurityConfig;
 import com.circleguard.auth.service.CustomUserDetailsService;
 import org.junit.jupiter.api.Test;
@@ -31,6 +33,12 @@ public class UserControllerTest {
 
     @MockBean
     private CustomUserDetailsService customUserDetailsService;
+
+    @MockBean
+    private JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    @MockBean
+    private DualChainAuthenticationProvider dualChainAuthenticationProvider;
 
     @Test
     void getUsersByPermission_NoMatchingUsers_ReturnsEmptyList() throws Exception {

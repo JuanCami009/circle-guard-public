@@ -67,6 +67,12 @@ resource "kubernetes_service_v1" "mailhog_svc" {
       target_port = 1025
     }
 
+    port {
+      name        = "ui"
+      port        = 8025
+      target_port = 8025
+    }
+
     type = "ClusterIP"
   }
 }

@@ -60,5 +60,6 @@ terraform/**/terraform.tfstate
 terraform/**/terraform.tfstate.backup
 terraform/**/.terraform.tfstate.lock.info
 terraform/scripts/localstack-data/
+terraform/envs/dev/*.secret.auto.tfvars
 terraform/envs/prod/*.secret.auto.tfvars
 terraform/envs/stage/*.secret.auto.tfvars

@@ -7,7 +7,7 @@ ENVS_DIR="${SCRIPT_DIR}/../envs"
 # ── Step 1: Terraform destroy for each initialized environment ────────────────
 if [ -d "${ENVS_DIR}" ]; then
   for ENV_DIR in "${ENVS_DIR}"/*/; do
-    if [ -d "${ENV_DIR}.terraform" ]; then
+    if [ -d "${ENV_DIR}/.terraform" ]; then
       ENV_NAME="$(basename "${ENV_DIR}")"
       echo "==> Destroying Terraform resources in '${ENV_NAME}'..."
       (cd "${ENV_DIR}" && terraform destroy -auto-approve) || \

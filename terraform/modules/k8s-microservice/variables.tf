@@ -31,8 +31,9 @@ variable "container_port" {
 }
 
 variable "nodeport" {
-  description = "NodePort to expose (3xxxx range); ignored when service_type != NodePort"
+  description = "NodePort to expose (3xxxx range); required when service_type = NodePort, null otherwise"
   type        = number
+  default     = null
 }
 
 variable "service_type" {

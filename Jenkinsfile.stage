@@ -16,7 +16,7 @@ pipeline {
         TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE = '/var/run/docker.sock'
         // kubeconfig parcheado con host.docker.internal en lugar de 127.0.0.1
         // (el kubeconfig original del host no es accesible desde dentro del contenedor)
-        KUBECONFIG                            = '/var/jenkins_home/kube-jenkins.conf'
+        KUBECONFIG                            = "${WORKSPACE}/terraform/envs/stage/kubeconfig-circleguard-stage.yaml"
     }
 
     stages {
@@ -335,49 +335,23 @@ pipeline {
         }
 
         // ─────────────────────────────────────────────────────────────────
-        stage('Deploy Stage') {
+        stage('Bootstrap Backend') {
             steps {
-                sh '''
-                    # Crear namespace stage si no existe
-                    kubectl apply -f k8s/00-namespace-stage.yml
+                sh 'bash terraform/scripts/bootstrap-backend.sh'
+            }
+        }
 
-                    # Desplegar infra al namespace circleguard-stage.
-                    # Los NodePorts de conveniencia (neo4j-browser, mailhog-ui) se convierten a
-                    # ClusterIP para evitar conflictos con los NodePorts de prod (300XX) y dev (310XX).
-                    for f in k8s/infra/*.yml; do
-                        sed -E \
-                            -e 's/namespace: circleguard$/namespace: circleguard-stage/g' \
-                            -e 's/type: NodePort/type: ClusterIP/g' \
-                            -e '/nodePort:/d' \
-                            "$f" | kubectl apply -f -
-                    done
-
-                    # Esperar a que los componentes criticos de infra esten listos
-                    kubectl rollout status deployment/postgres -n circleguard-stage --timeout=120s || true
-                    kubectl rollout status deployment/redis    -n circleguard-stage --timeout=60s  || true
-                    kubectl rollout status deployment/kafka    -n circleguard-stage --timeout=90s  || true
-
-                    # Desplegar los 6 microservicios con namespace, tag :stage y NodePorts desplazados
-                    # a rango 320XX para no colisionar con prod (300XX) ni dev (310XX).
-                    # Reemplazos explícitos (sin backreferences) para compatibilidad con BusyBox sed.
-                    for f in k8s/services/*.yml; do
-                        sed \
-                            -e 's/namespace: circleguard$/namespace: circleguard-stage/g' \
-                            -e 's/:latest/:stage/g' \
-                            -e 's/nodePort: 30082/nodePort: 32082/g' \
-                            -e 's/nodePort: 30084/nodePort: 32084/g' \
-                            -e 's/nodePort: 30085/nodePort: 32085/g' \
-                            -e 's/nodePort: 30086/nodePort: 32086/g' \
-                            -e 's/nodePort: 30087/nodePort: 32087/g' \
-                            -e 's/nodePort: 30088/nodePort: 32088/g' \
-                            -e 's/nodePort: 30180/nodePort: 32180/g' \
-                            -e 's/nodePort: 30083/nodePort: 32083/g' \
-                            "$f" | kubectl apply -f -
-                    done
-
-                    echo "--- Recursos en namespace circleguard-stage ---"
-                    kubectl get all -n circleguard-stage
-                '''
+        // ─────────────────────────────────────────────────────────────────
+        stage('Deploy Stage (Terraform)') {
+            steps {
+                dir('terraform/envs/stage') {
+                    sh 'terraform init -input=false'
+                    sh 'terraform apply -input=false -auto-approve -target=module.cluster'
+                }
+                sh 'bash terraform/scripts/load-images.sh stage'
+                dir('terraform/envs/stage') {
+                    sh 'terraform apply -input=false -auto-approve -var="image_tag=stage"'
+                }
             }
         }
 

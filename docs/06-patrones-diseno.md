@@ -1,11 +1,5 @@
 # Punto 3 - Patrones de Diseño
 
-**Proyecto:** CircleGuard - Sistema de rastreo de contactos universitario  
-**Autor:** Juan Camilo Molina Mussen  
-**Fecha:** 2025-05-28
-
----
-
 ## 1. Patrones Existentes en la Arquitectura
 
 Los siguientes patrones fueron identificados en el código fuente. No requieren cambios adicionales.

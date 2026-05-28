@@ -1,6 +1,6 @@
-# Punto 3 — Patrones de Diseño
+# Punto 3 - Patrones de Diseño
 
-**Proyecto:** CircleGuard — Sistema de rastreo de contactos universitario  
+**Proyecto:** CircleGuard - Sistema de rastreo de contactos universitario  
 **Autor:** Juan Camilo Molina Mussen  
 **Fecha:** 2025-05-28
 
@@ -15,25 +15,25 @@ Los siguientes patrones fueron identificados en el código fuente. No requieren 
 | **Builder** (Lombok `@Builder`) | Creacional | `identity-service/.../model/IdentityMapping.java:13`; `.../event/IdentityAccessEvent.java:9,19,27`; `promotion-service/.../service/HealthStatusService.java:48-53` |
 | **Factory** (Spring `@Bean`) | Creacional | `auth-service/.../config/SecurityConfig.java:23,37,49,57,67,75,82`; `promotion-service/.../config/CacheConfig.java:17` |
 | **Adapter** (clientes HTTP) | Estructural | `auth-service/.../client/IdentityClient.java`; `dashboard-service/.../client/PromotionClient.java`; `notification-service/.../service/PushServiceImpl.java:18-32` |
-| **Facade** | Estructural | `notification-service/.../service/NotificationDispatcher.java:13-41` — oculta Email/SMS/Push detrás de `dispatch()` |
-| **Chain of Responsibility** | Comportamiento | `auth-service/.../security/DualChainAuthenticationProvider.java:13-27` — LDAP → Local DB |
+| **Facade** | Estructural | `notification-service/.../service/NotificationDispatcher.java:13-41` - oculta Email/SMS/Push detrás de `dispatch()` |
+| **Chain of Responsibility** | Comportamiento | `auth-service/.../security/DualChainAuthenticationProvider.java:13-27` - LDAP → Local DB |
 | **Strategy** | Comportamiento | `notification-service/.../service/TemplateService.java:45-58`; interfaces `EmailService`/`SmsService`/`PushService` + `*Impl` |
 | **Observer / Pub-Sub** (Kafka) | Comportamiento | Producers: `HealthStatusService.java:119,135,150`, `StatusLifecycleService.java:76`. Listeners: `SurveyListener.java:16,33`, `ExposureNotificationListener.java:22`, `CircleFencedListener`, `PriorityAlertListener` |
-| **State** (máquina de estados) | Comportamiento | `promotion-service/.../service/HealthStatusService.java:34-138` — transiciones `ACTIVE→SUSPECT→PROBABLE→CONFIRMED→RECOVERED` |
-| **Template Method** | Comportamiento | Interfaces Spring Data `*Repository.java` — define el esqueleto de consulta, implementación por el framework |
+| **State** (máquina de estados) | Comportamiento | `promotion-service/.../service/HealthStatusService.java:34-138` - transiciones `ACTIVE→SUSPECT→PROBABLE→CONFIRMED→RECOVERED` |
+| **Template Method** | Comportamiento | Interfaces Spring Data `*Repository.java` - define el esqueleto de consulta, implementación por el framework |
 | **Repository** | Arquitectural | `IdentityMappingRepository`; `LocalUserRepository`; `promotion-service/.../repository/{graph,jpa}/*` (Neo4j + JPA) |
 | **DTO** | Arquitectural | `promotion-service/.../dto/{Building,AccessPoint,Floor}DTO.java` |
-| **Dependency Injection** | Arquitectural | Pervasivo vía `@RequiredArgsConstructor` — `HealthStatusService.java:17-25`, `NotificationDispatcher.java:14-18` |
+| **Dependency Injection** | Arquitectural | Pervasivo vía `@RequiredArgsConstructor` - `HealthStatusService.java:17-25`, `NotificationDispatcher.java:14-18` |
 | **Retry** (Spring Retry) | Resiliencia | `notification-service/build.gradle.kts:18`; `PushServiceImpl.java:42-46,86-91` |
 | **External Configuration** (parcial) | Configuración | `@Value` en `PushServiceImpl.java:20,23`, `TemplateService.java:21-28`, `QrValidationService.java:18` |
-| **Scheduled Tasks** | Operacional | `StatusLifecycleService.java:33` — `@Scheduled` para transiciones automáticas de estado |
-| **Cache-Aside** (parcial) | Performance | `promotion-service/.../config/CacheConfig.java:13-29` — Caffeine + `@Cacheable/@CacheEvict` en `HealthStatusService.java:39,168,173` |
+| **Scheduled Tasks** | Operacional | `StatusLifecycleService.java:33` - `@Scheduled` para transiciones automáticas de estado |
+| **Cache-Aside** (parcial) | Performance | `promotion-service/.../config/CacheConfig.java:13-29` - Caffeine + `@Cacheable/@CacheEvict` en `HealthStatusService.java:39,168,173` |
 
 ---
 
 ## 2. Patrones Nuevos Implementados
 
-### 2.1 Circuit Breaker + Retry — Resiliencia
+### 2.1 Circuit Breaker + Retry - Resiliencia
 
 **Objetivo:** Proteger `auth-service` y `dashboard-service` de fallos en cascada cuando `identity-service` o `promotion-service` no están disponibles.
 
@@ -112,7 +112,7 @@ sequenceDiagram
 
 **Estado:** Aceptado | **Fecha:** 2025-05-28
 
-**Contexto:** `IdentityClient` usaba `new RestTemplate()` sin timeout ni fallback. `PromotionClient` tenía try/catch manual sin estado compartido de fallos — sin umbral de apertura de circuito, el servicio degradado seguía recibiendo carga.
+**Contexto:** `IdentityClient` usaba `new RestTemplate()` sin timeout ni fallback. `PromotionClient` tenía try/catch manual sin estado compartido de fallos - sin umbral de apertura de circuito, el servicio degradado seguía recibiendo carga.
 
 **Decisión:** Resilience4j con `@CircuitBreaker` + `@Retry` sobre métodos públicos de ambos clientes.
 
@@ -136,7 +136,7 @@ sequenceDiagram
 
 ---
 
-### 2.2 External Configuration + Feature Toggle — Configuración
+### 2.2 External Configuration + Feature Toggle - Configuración
 
 **Objetivo:** Centralizar secretos vía variables de entorno y reemplazar el toggle ad-hoc `gotifyToken.equals("MOCK_TOKEN")` por un mecanismo formal de Spring.
 
@@ -222,13 +222,13 @@ flowchart TD
 - Compatible con Kubernetes `envFrom: secretRef`
 
 **Consecuencias negativas:**
-- Defaults de dev aparecen en el repo — producción debe garantizar inyección de `JWT_SECRET`
+- Defaults de dev aparecen en el repo - producción debe garantizar inyección de `JWT_SECRET`
 - Cambio de toggle requiere restart (no hot-reload)
 - Dos clases push puede confundir sin leer esta documentación
 
 ---
 
-### 2.3 Cache-Aside en gateway-service — Performance
+### 2.3 Cache-Aside en gateway-service - Performance
 
 **Objetivo:** Reducir latencia en el hot path de validación QR y aislar el gate de caídas momentáneas de Redis.
 
@@ -290,7 +290,7 @@ sequenceDiagram
 
 **Estado:** Aceptado | **Fecha:** 2025-05-28
 
-**Contexto:** `QrValidationService.validateToken` es hot path de acceso al campus. Sin cache, cada scan ejecuta verificación HMAC + consulta Redis. Para 500 personas en 5min = ~3,000 operaciones de red. Si Redis cae, el servicio retornaba "Invalid or Expired Token" — mensaje que confunde fallo de infra con fallo de seguridad. `promotion-service` ya usa Cache-Aside con Caffeine, patrón conocido por el equipo.
+**Contexto:** `QrValidationService.validateToken` es hot path de acceso al campus. Sin cache, cada scan ejecuta verificación HMAC + consulta Redis. Para 500 personas en 5min = ~3,000 operaciones de red. Si Redis cae, el servicio retornaba "Invalid or Expired Token" - mensaje que confunde fallo de infra con fallo de seguridad. `promotion-service` ya usa Cache-Aside con Caffeine, patrón conocido por el equipo.
 
 **Decisión:** Caffeine como L1 cache local, TTL 30s, máximo 10k entradas. Solo resultados válidos (GREEN) se cachean. Redis separado en método privado con manejo de fallos independiente.
 

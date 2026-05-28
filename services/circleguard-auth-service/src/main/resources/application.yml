@@ -19,12 +19,33 @@ spring:
     password: admin
 
 jwt:
-  secret: "my-super-secret-dev-key-32-chars-long-12345678"
+  secret: "${JWT_SECRET:my-super-secret-dev-key-32-chars-long-12345678}"
   expiration: 3600000
 
 qr:
-  secret: "my-qr-secret-key-for-dev-1234567890"
+  secret: "${QR_SECRET:my-qr-secret-key-for-dev-1234567890}"
   expiration: 300
+
+identity:
+  service:
+    url: "${IDENTITY_SERVICE_URL:http://localhost:8083}"
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      identity:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+  retry:
+    instances:
+      identity:
+        maxAttempts: 3
+        waitDuration: 500ms
+        retryExceptions:
+          - java.lang.RuntimeException
+          - org.springframework.web.client.RestClientException
 
 server:
   port: 8180

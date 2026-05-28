@@ -13,5 +13,18 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
 
+circleguard:
+  promotion-service:
+    url: "${PROMOTION_SERVICE_URL:http://localhost:8088}"
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      promotion:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+
 server:
   port: 8084

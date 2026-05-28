@@ -33,7 +33,7 @@ resource "kubernetes_deployment_v1" "this" {
             image_pull_policy = "IfNotPresent"
             command = [
               "sh", "-c",
-              "until nc -z ${init_container.value.host} ${init_container.value.port}; do echo 'Waiting for ${init_container.value.name}...'; sleep 5; done; echo '${init_container.value.name} is ready.'"
+              "until nc -z ${init_container.value.host} ${init_container.value.port}; do echo 'Waiting for ${init_container.value.host}...'; sleep 5; done; echo '${init_container.value.host} is ready.'"
             ]
           }
         }

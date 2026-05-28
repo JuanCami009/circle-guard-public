@@ -16,7 +16,7 @@ pipeline {
         TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE = '/var/run/docker.sock'
         // kubeconfig parcheado con host.docker.internal en lugar de 127.0.0.1
         // (el kubeconfig original del host no es accesible desde dentro del contenedor)
-        KUBECONFIG                            = '/var/jenkins_home/kube-jenkins.conf'
+        KUBECONFIG                            = "${WORKSPACE}/terraform/envs/prod/kubeconfig-circleguard-prod.yaml"
     }
 
     stages {
@@ -335,38 +335,30 @@ pipeline {
         }
 
         // ─────────────────────────────────────────────────────────────────
-        stage('Deploy Master') {
+        stage('Bootstrap Backend') {
             steps {
-                sh '''
-                    # Crear namespace de producción si no existe (idempotente)
-                    kubectl apply -f k8s/00-namespace.yml
+                sh 'bash terraform/scripts/bootstrap-backend.sh'
+            }
+        }
 
-                    # Desplegar infraestructura al namespace circleguard (producción).
-                    # Los manifests ya tienen namespace: circleguard y type: NodePort —
-                    # NO se aplica ninguna transformación sed.
-                    # Se aplican en orden explícito por dependencia (kafka requiere zookeeper).
-                    kubectl apply -f k8s/infra/01-configmap.yml
-                    kubectl apply -f k8s/infra/02-secrets.yml
-                    kubectl apply -f k8s/infra/03-postgres.yml
-                    kubectl apply -f k8s/infra/04-neo4j.yml
-                    kubectl apply -f k8s/infra/05-zookeeper.yml
-                    kubectl apply -f k8s/infra/06-kafka.yml
-                    kubectl apply -f k8s/infra/07-redis.yml
-                    kubectl apply -f k8s/infra/08-mailhog.yml
-                    kubectl apply -f k8s/infra/09-openldap.yml
+        // ─────────────────────────────────────────────────────────────────
+        stage('Approval (Prod)') {
+            steps {
+                input message: 'Desplegar a produccion?', ok: 'Desplegar'
+            }
+        }
 
-                    # Esperar a que los componentes criticos de infra esten listos
-                    kubectl rollout status deployment/postgres -n circleguard --timeout=120s || true
-                    kubectl rollout status deployment/redis    -n circleguard --timeout=60s  || true
-                    kubectl rollout status deployment/kafka    -n circleguard --timeout=90s  || true
-
-                    # Desplegar los 8 microservicios — manifests ya en namespace circleguard,
-                    # tag :latest, NodePorts 300XX. Sin sed.
-                    kubectl apply -f k8s/services/
-
-                    echo "--- Recursos en namespace circleguard (producción) ---"
-                    kubectl get all -n circleguard
-                '''
+        // ─────────────────────────────────────────────────────────────────
+        stage('Deploy Master (Terraform)') {
+            steps {
+                dir('terraform/envs/prod') {
+                    sh 'terraform init -input=false'
+                    sh 'terraform apply -input=false -auto-approve -target=module.cluster'
+                }
+                sh 'bash terraform/scripts/load-images.sh prod'
+                dir('terraform/envs/prod') {
+                    sh 'terraform apply -input=false -auto-approve -var="image_tag=latest"'
+                }
             }
         }
 

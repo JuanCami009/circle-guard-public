@@ -13,6 +13,9 @@ import java.util.concurrent.CompletableFuture;
 
 @Service
 @Slf4j
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+    name = "features.push.real-delivery", havingValue = "true"
+)
 public class PushServiceImpl implements PushService {
 
     private final WebClient webClient;
@@ -46,12 +49,6 @@ public class PushServiceImpl implements PushService {
     )
     public CompletableFuture<Void> sendAsync(String userId, String message, Map<String, String> metadata) {
         String correlationId = java.util.UUID.randomUUID().toString();
-        if (gotifyToken.equals("MOCK_TOKEN")) {
-            log.info("[MOCK PUSH] To: {}, Content: {}, Metadata: {}", userId, message, metadata);
-            auditLogService.logDelivery(userId, "PUSH", "SUCCESS", correlationId);
-            return CompletableFuture.completedFuture(null);
-        }
-
         try {
             log.debug("Attempting to send push notification with metadata to user: {}", userId);
             

@@ -17,6 +17,11 @@ pipeline {
         // kubeconfig parcheado con host.docker.internal en lugar de 127.0.0.1
         // (el kubeconfig original del host no es accesible desde dentro del contenedor)
         KUBECONFIG                            = "${WORKSPACE}/terraform/envs/stage/kubeconfig-circleguard-stage.yaml"
+        // CI/CD avanzado — SonarQube y Trivy
+        SONAR_HOST_URL                        = 'http://host.docker.internal:9000'
+        IMAGE_TAG                             = 'stage'
+        // TRIVY_EXIT_CODE=0 en stage: reporta sin bloquear ante HIGH/CRITICAL
+        TRIVY_EXIT_CODE                       = '0'
     }
 
     stages {
@@ -289,6 +294,34 @@ pipeline {
         }
 
         // ─────────────────────────────────────────────────────────────────
+        stage('SonarQube Analysis') {
+            // Analiza los 8 microservicios con SonarQube leyendo los reportes JaCoCo XML
+            // generados en Unit Tests / Integration Tests.
+            // Requiere: plugin SonarQube Scanner en Jenkins + credencial 'sonar-token'
+            //           + servidor 'sonarqube' configurado en Jenkins > Configure System.
+            steps {
+                withSonarQubeEnv('sonarqube') {
+                    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                        sh './gradlew sonar --no-daemon -Dsonar.token=${SONAR_TOKEN} -Dsonar.host.url=${SONAR_HOST_URL}'
+                    }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Quality Gate') {
+            // Espera el veredicto del Quality Gate de SonarQube vía webhook.
+            // abortPipeline: false en stage — el resultado se registra pero NO bloquea el pipeline.
+            // Requiere: webhook en SonarQube > Administration > Webhooks apuntando a
+            //           http://JENKINS_URL/sonarqube-webhook/
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: false
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
         stage('Docker Build :stage') {
             parallel {
                 stage('docker:file-service') {
@@ -330,6 +363,42 @@ pipeline {
                     steps {
                         sh 'docker build -t ${REGISTRY}/identity-service:stage -f services/circleguard-identity-service/Dockerfile .'
                     }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Trivy Scan') {
+            // Escanea las 8 imágenes Docker con Trivy buscando vulnerabilidades HIGH y CRITICAL.
+            // TRIVY_EXIT_CODE=0 en stage → genera reportes HTML sin bloquear el pipeline.
+            // Los reportes se archivan como artefactos del build para revisión pre-producción.
+            steps {
+                sh '''
+                    mkdir -p trivy-reports
+                    SCAN_FAIL=0
+                    for svc in file gateway dashboard form notification promotion auth identity; do
+                        echo "Escaneando ${REGISTRY}/${svc}-service:${IMAGE_TAG}..."
+                        docker run --rm \
+                            -v /var/run/docker.sock:/var/run/docker.sock \
+                            -v "$PWD/trivy-reports":/out \
+                            aquasec/trivy:latest image \
+                            --severity HIGH,CRITICAL \
+                            --exit-code ${TRIVY_EXIT_CODE} \
+                            --format template \
+                            --template "@contrib/html.tpl" \
+                            -o /out/trivy-${svc}.html \
+                            ${REGISTRY}/${svc}-service:${IMAGE_TAG} || SCAN_FAIL=1
+                    done
+                    if [ "${TRIVY_EXIT_CODE}" = "1" ] && [ "${SCAN_FAIL}" = "1" ]; then
+                        echo "Trivy encontró vulnerabilidades HIGH/CRITICAL — bloqueando pipeline."
+                        exit 1
+                    fi
+                    echo "Trivy scan completado (reportes en trivy-reports/)."
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'trivy-reports/*.html', allowEmptyArchive: true
                 }
             }
         }
@@ -466,6 +535,32 @@ pipeline {
         }
         failure {
             echo "Stage pipeline FALLIDO — revisar logs anteriores"
+            emailext(
+                subject: "❌ FALLÓ ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
+                body: """Pipeline de stage fallido.
+
+Job     : ${env.JOB_NAME}
+Build   : #${env.BUILD_NUMBER}
+Branch  : ${env.GIT_BRANCH}
+Commit  : ${env.GIT_COMMIT}
+Consola : ${env.BUILD_URL}console
+""",
+                to: 'devops@circleguard.local'
+            )
+        }
+        unstable {
+            emailext(
+                subject: "⚠️ INESTABLE ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
+                body: """Pipeline de stage inestable (Quality Gate degradado o tests con advertencias).
+
+Job     : ${env.JOB_NAME}
+Build   : #${env.BUILD_NUMBER}
+Branch  : ${env.GIT_BRANCH}
+Commit  : ${env.GIT_COMMIT}
+Consola : ${env.BUILD_URL}console
+""",
+                to: 'devops@circleguard.local'
+            )
         }
     }
 }

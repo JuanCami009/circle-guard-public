@@ -1,0 +1,10 @@
+# .trivyignore — CVEs aceptados conscientemente para CircleGuard CI
+#
+# Formato: un CVE por línea. Agregar comentario con justificación.
+# Referencia: https://aquasecurity.github.io/trivy/latest/docs/configuration/filtering/#trivyignore
+#
+# IMPORTANTE: revisar y actualizar esta lista en cada release.
+# CVEs sin justificación documentada deben ser remediados, no ignorados.
+
+# Ejemplo de uso (descomentar cuando aplique):
+# CVE-2023-XXXXX  # JDK 21 base image — sin fix disponible aún; mitigado por red policy

@@ -17,6 +17,11 @@ pipeline {
         // kubeconfig parcheado con host.docker.internal en lugar de 127.0.0.1
         // (el kubeconfig original del host no es accesible desde dentro del contenedor)
         KUBECONFIG                            = "${WORKSPACE}/terraform/envs/prod/kubeconfig-circleguard-prod.yaml"
+        // CI/CD avanzado — SonarQube y Trivy
+        SONAR_HOST_URL                        = 'http://host.docker.internal:9000'
+        IMAGE_TAG                             = 'latest'
+        // TRIVY_EXIT_CODE=1 en prod: BLOQUEA el pipeline si encuentra HIGH/CRITICAL
+        TRIVY_EXIT_CODE                       = '1'
     }
 
     stages {
@@ -289,6 +294,35 @@ pipeline {
         }
 
         // ─────────────────────────────────────────────────────────────────
+        stage('SonarQube Analysis') {
+            // Analiza los 8 microservicios con SonarQube leyendo los reportes JaCoCo XML
+            // generados en Unit Tests / Integration Tests.
+            // Requiere: plugin SonarQube Scanner en Jenkins + credencial 'sonar-token'
+            //           + servidor 'sonarqube' configurado en Jenkins > Configure System.
+            steps {
+                withSonarQubeEnv('sonarqube') {
+                    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                        sh './gradlew sonar --no-daemon -Dsonar.token=${SONAR_TOKEN} -Dsonar.host.url=${SONAR_HOST_URL}'
+                    }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Quality Gate') {
+            // Espera el veredicto del Quality Gate de SonarQube vía webhook.
+            // abortPipeline: true en prod — BLOQUEA el release si el Quality Gate falla.
+            // Ningún código con deuda técnica crítica o cobertura insuficiente llega a producción.
+            // Requiere: webhook en SonarQube > Administration > Webhooks apuntando a
+            //           http://JENKINS_URL/sonarqube-webhook/
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
         stage('Docker Build :latest') {
             parallel {
                 stage('docker:file-service') {
@@ -330,6 +364,45 @@ pipeline {
                     steps {
                         sh 'docker build -t ${REGISTRY}/identity-service:latest -f services/circleguard-identity-service/Dockerfile .'
                     }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Trivy Scan') {
+            // Escanea las 8 imágenes Docker con Trivy buscando vulnerabilidades HIGH y CRITICAL.
+            // TRIVY_EXIT_CODE=1 en prod → BLOQUEA el pipeline si alguna imagen tiene HIGH/CRITICAL.
+            // Para aceptar un CVE conscientemente, agregar el CVE a .trivyignore con justificación.
+            steps {
+                sh '''
+                    mkdir -p trivy-reports
+                    SCAN_FAIL=0
+                    for svc in file gateway dashboard form notification promotion auth identity; do
+                        echo "Escaneando ${REGISTRY}/${svc}-service:${IMAGE_TAG}..."
+                        docker run --rm \
+                            -v /var/run/docker.sock:/var/run/docker.sock \
+                            -v "$PWD/trivy-reports":/out \
+                            -v "$PWD/.trivyignore":/.trivyignore \
+                            aquasec/trivy:latest image \
+                            --severity HIGH,CRITICAL \
+                            --exit-code ${TRIVY_EXIT_CODE} \
+                            --ignorefile /.trivyignore \
+                            --format template \
+                            --template "@contrib/html.tpl" \
+                            -o /out/trivy-${svc}.html \
+                            ${REGISTRY}/${svc}-service:${IMAGE_TAG} || SCAN_FAIL=1
+                    done
+                    if [ "${TRIVY_EXIT_CODE}" = "1" ] && [ "${SCAN_FAIL}" = "1" ]; then
+                        echo "Trivy encontró vulnerabilidades HIGH/CRITICAL — bloqueando release a producción."
+                        echo "Opciones: (1) parchear la imagen base, (2) agregar CVE a .trivyignore con justificación."
+                        exit 1
+                    fi
+                    echo "Trivy scan completado — sin vulnerabilidades HIGH/CRITICAL bloqueantes."
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'trivy-reports/*.html', allowEmptyArchive: true
                 }
             }
         }
@@ -460,8 +533,11 @@ pipeline {
             // Crea un tag Git ligero en el commit actual para marcar el release.
             steps {
                 sh '''
-                    VERSION="v1.0.${BUILD_NUMBER}"
-                    echo "Generando Release Notes para ${VERSION}..."
+                    # Versionado semántico automático: lee commits desde el último tag vX.Y.Z
+                    # y calcula MAJOR/MINOR/PATCH según Conventional Commits (feat/fix/BREAKING).
+                    chmod +x scripts/semver.sh
+                    VERSION=$(bash scripts/semver.sh)
+                    echo "Generando Release Notes para ${VERSION} (semver desde Conventional Commits)..."
 
                     # Determinar el rango de commits desde el tag anterior
                     PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
@@ -604,6 +680,34 @@ pipeline {
         }
         failure {
             echo "Master pipeline FALLIDO — revisar logs anteriores"
+            emailext(
+                subject: "🚨 FALLÓ PRODUCCIÓN ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
+                body: """ALERTA: Pipeline de producción fallido.
+
+Job     : ${env.JOB_NAME}
+Build   : #${env.BUILD_NUMBER}
+Branch  : ${env.GIT_BRANCH}
+Commit  : ${env.GIT_COMMIT}
+Consola : ${env.BUILD_URL}console
+
+Verificar: Quality Gate, Trivy Scan, o etapa de despliegue.
+""",
+                to: 'devops@circleguard.local'
+            )
+        }
+        unstable {
+            emailext(
+                subject: "⚠️ INESTABLE PRODUCCIÓN ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
+                body: """Pipeline de producción inestable (Quality Gate degradado o Trivy con advertencias).
+
+Job     : ${env.JOB_NAME}
+Build   : #${env.BUILD_NUMBER}
+Branch  : ${env.GIT_BRANCH}
+Commit  : ${env.GIT_COMMIT}
+Consola : ${env.BUILD_URL}console
+""",
+                to: 'devops@circleguard.local'
+            )
         }
     }
 }

@@ -1,6 +1,7 @@
 plugins {
     id("org.springframework.boot") version "3.2.4" apply false
     id("io.spring.dependency-management") version "1.1.4" apply false
+    id("org.sonarqube") version "5.1.0.4882"
     kotlin("jvm") version "1.9.24" apply false
     kotlin("plugin.spring") version "1.9.24" apply false
     kotlin("plugin.jpa") version "1.9.24" apply false
@@ -18,6 +19,7 @@ allprojects {
 subprojects {
     apply(plugin = "java")
     apply(plugin = "org.jetbrains.kotlin.jvm")
+    apply(plugin = "jacoco")
     extensions.configure<JavaPluginExtension> {
         toolchain {
             languageVersion.set(JavaLanguageVersion.of(21))
@@ -45,5 +47,25 @@ subprojects {
 
     tasks.withType<Test> {
         useJUnitPlatform()
+        finalizedBy("jacocoTestReport")
+    }
+
+    tasks.withType<org.gradle.testing.jacoco.tasks.JacocoReport> {
+        reports {
+            xml.required.set(true)
+            html.required.set(true)
+        }
+    }
+}
+
+sonar {
+    properties {
+        property("sonar.projectKey", "circleguard")
+        property("sonar.projectName", "CircleGuard")
+        property("sonar.sourceEncoding", "UTF-8")
+        property("sonar.java.source", "21")
+        // SonarQube lee los reportes JaCoCo XML de cada subproyecto automáticamente
+        // porque el path relativo build/reports/jacoco/test/jacocoTestReport.xml
+        // es el default del plugin jacoco de Gradle.
     }
 }

@@ -1,0 +1,208 @@
+---
+# ── Prometheus ConfigMap ─────────────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: circleguard
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval:     15s
+      evaluation_interval: 15s
+
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets: ["alertmanager-svc:9093"]
+
+    rule_files:
+      - /etc/prometheus/alert.rules.yml
+
+    scrape_configs:
+      - job_name: gateway-service
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ["gateway-service-svc:8087"]
+            labels: { application: gateway-service }
+
+      - job_name: auth-service
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ["auth-service-svc:8180"]
+            labels: { application: auth-service }
+
+      - job_name: identity-service
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ["identity-service-svc:8083"]
+            labels: { application: identity-service }
+
+      - job_name: dashboard-service
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ["dashboard-service-svc:8084"]
+            labels: { application: dashboard-service }
+
+      - job_name: file-service
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ["file-service-svc:8085"]
+            labels: { application: file-service }
+
+      - job_name: form-service
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ["form-service-svc:8086"]
+            labels: { application: form-service }
+
+      - job_name: notification-service
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ["notification-service-svc:8082"]
+            labels: { application: notification-service }
+
+      - job_name: promotion-service
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ["promotion-service-svc:8088"]
+            labels: { application: promotion-service }
+
+      - job_name: prometheus
+        static_configs:
+          - targets: ["localhost:9090"]
+
+  alert.rules.yml: |
+    groups:
+      - name: circleguard-service-alerts
+        rules:
+          - alert: ServiceDown
+            expr: up == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Servicio {{ $labels.job }} no disponible"
+              description: "El servicio {{ $labels.job }} lleva más de 1 minuto caído (instancia {{ $labels.instance }})."
+
+          - alert: HighErrorRate
+            expr: |
+              rate(http_server_requests_seconds_count{outcome="SERVER_ERROR"}[5m])
+              /
+              rate(http_server_requests_seconds_count[5m]) > 0.05
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Alta tasa de errores en {{ $labels.application }}"
+              description: "Servicio {{ $labels.application }} tiene >5% de respuestas 5xx en los últimos 5 minutos."
+
+          - alert: HighLatencyP99
+            expr: |
+              histogram_quantile(0.99,
+                rate(http_server_requests_seconds_bucket[5m])
+              ) > 1.0
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Latencia p99 elevada en {{ $labels.application }}"
+              description: "Percentil 99 de latencia supera 1s en {{ $labels.application }}."
+
+          - alert: HighJvmHeapUsage
+            expr: |
+              jvm_memory_used_bytes{area="heap"}
+              /
+              jvm_memory_max_bytes{area="heap"} > 0.90
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Heap JVM alto en {{ $labels.application }}"
+              description: "El heap JVM de {{ $labels.application }} supera el 90% de capacidad."
+
+      - name: circleguard-business-alerts
+        rules:
+          - alert: NoHealthStatusUpdates
+            expr: increase(circleguard_health_status_updates_total[1h]) == 0
+            for: 0m
+            labels:
+              severity: info
+            annotations:
+              summary: "Sin actualizaciones de estado de salud en 1 hora"
+              description: "promotion-service no ha registrado cambios de estado en la última hora."
+---
+# ── Prometheus Deployment ────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: circleguard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.51.2
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
+            - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+            - "--web.console.templates=/usr/share/prometheus/consoles"
+          ports:
+            - containerPort: 9090
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+              readOnly: true
+            - name: data
+              mountPath: /prometheus
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        - name: data
+          emptyDir: {}
+---
+# ── Prometheus ClusterIP Service ─────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-svc
+  namespace: circleguard
+spec:
+  type: ClusterIP
+  selector:
+    app: prometheus
+  ports:
+    - port: 9090
+      targetPort: 9090
+---
+# ── Prometheus NodePort (UI en el host: http://localhost:30090) ───────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-nodeport
+  namespace: circleguard
+spec:
+  type: NodePort
+  selector:
+    app: prometheus
+  ports:
+    - port: 9090
+      targetPort: 9090
+      nodePort: 30090

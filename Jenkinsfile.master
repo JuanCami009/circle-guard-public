@@ -202,7 +202,19 @@ pipeline {
             // En macOS con Docker Desktop el proxy de socket impide la detección de Testcontainers.
             parallel {
                 stage('integration:file-service') {
-                    steps { echo 'Sin tests de integración en file-service — etapa omitida.' }
+                    steps {
+                        sh '''
+                            ./gradlew :services:circleguard-file-service:test \
+                                --tests "com.circleguard.file.integration.*" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-file-service/build/test-results/test/*.xml'
+                        }
+                    }
                 }
                 stage('integration:gateway-service') {
                     steps {
@@ -220,7 +232,19 @@ pipeline {
                     }
                 }
                 stage('integration:dashboard-service') {
-                    steps { echo 'Sin tests de integración en dashboard-service — etapa omitida.' }
+                    steps {
+                        sh '''
+                            ./gradlew :services:circleguard-dashboard-service:test \
+                                --tests "com.circleguard.dashboard.integration.*" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-dashboard-service/build/test-results/test/*.xml'
+                        }
+                    }
                 }
                 stage('integration:form-service') {
                     steps {
@@ -289,6 +313,47 @@ pipeline {
                                   testResults: 'services/circleguard-identity-service/build/test-results/test/*.xml'
                         }
                     }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Mobile Tests') {
+            // Pruebas unitarias de la app React Native (Expo) con cobertura.
+            // jest-junit genera junit.xml para el panel de tests de Jenkins.
+            // El reporte de cobertura (lcov/cobertura) se archiva como artefacto.
+            steps {
+                sh '''
+                    cd mobile
+                    npm ci --prefer-offline || npm install
+                    npm run test:ci
+                '''
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true,
+                          testResults: 'mobile/junit.xml'
+                    archiveArtifacts artifacts: 'mobile/coverage/**', allowEmptyArchive: true
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Coverage Reports') {
+            // Genera y publica reportes JaCoCo de los 8 microservicios.
+            // Requiere Jenkins Coverage Plugin instalado.
+            steps {
+                sh './gradlew jacocoTestReport --no-daemon || true'
+            }
+            post {
+                always {
+                    recordCoverage(
+                        tools: [[parser: 'JACOCO',
+                                 pattern: 'services/*/build/reports/jacoco/test/jacocoTestReport.xml']],
+                        sourceCodeRetention: 'EVERY_BUILD'
+                    )
+                    archiveArtifacts artifacts: 'services/*/build/reports/jacoco/**/*.html',
+                                     allowEmptyArchive: true
                 }
             }
         }
@@ -481,11 +546,13 @@ pipeline {
                 ]) {
                     sh '''
                         E2E_PORT_NOTIFICATION=30082 \
+                        E2E_PORT_IDENTITY=30083 \
                         E2E_PORT_DASHBOARD=30084 \
                         E2E_PORT_FILE=30085 \
                         E2E_PORT_FORM=30086 \
                         E2E_PORT_GATEWAY=30087 \
                         E2E_PORT_PROMOTION=30088 \
+                        E2E_PORT_AUTH=30180 \
                         bash e2e/run_e2e.sh
                     '''
                 }
@@ -521,6 +588,31 @@ pipeline {
             post {
                 always {
                     archiveArtifacts artifacts: 'locust/locust-report-master.html,locust/locust-stats-master*.csv',
+                                     allowEmptyArchive: true
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Security Tests (OWASP ZAP)') {
+            // Escaneo pasivo de seguridad con OWASP ZAP contra los 8 servicios desplegados.
+            // Modo baseline (passive): no lanza ataques activos — solo analiza tráfico pasivo.
+            // ZAP_FAIL_ON=High: bloquea el release solo si hay alertas de severidad High.
+            // Para suprimir falsos positivos de API, editar zap/rules.tsv con justificación.
+            // Los reportes HTML se archivan como artefactos para auditoría.
+            steps {
+                sh 'chmod +x zap/run_zap.sh'
+                sh '''
+                    ZAP_HOST=host.docker.internal \
+                    ZAP_FAIL_ON=High \
+                    ZAP_TIMEOUT=120 \
+                    E2E_HOST=host.docker.internal \
+                    bash zap/run_zap.sh
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'zap/reports/*.html,zap/reports/*.json',
                                      allowEmptyArchive: true
                 }
             }
@@ -641,12 +733,16 @@ pipeline {
                         echo ""
                         echo "- [x] Build JARs (8 servicios)"
                         echo "- [x] Unit Tests (8 servicios)"
-                        echo "- [x] Integration Tests (6 servicios activos)"
+                        echo "- [x] Integration Tests (8 servicios)"
+                        echo "- [x] Mobile Tests (React Native / Expo)"
+                        echo "- [x] Coverage Reports (JaCoCo + jest)"
                         echo "- [x] Docker Build :latest (8 servicios)"
+                        echo "- [x] Trivy Scan (vulnerabilidades HIGH/CRITICAL)"
                         echo "- [x] Deploy Kubernetes namespace circleguard"
                         echo "- [x] Smoke Tests (8 servicios, NodePorts 300XX)"
-                        echo "- [x] E2E Tests (5 flujos)"
+                        echo "- [x] E2E Tests (7 flujos, run_e2e.sh)"
                         echo "- [x] Performance Tests (Locust, 50 usuarios, 60s)"
+                        echo "- [x] Security Tests (OWASP ZAP baseline, 8 servicios)"
                         echo ""
                         echo "---"
                         echo ""

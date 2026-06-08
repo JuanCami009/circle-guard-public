@@ -1,0 +1,185 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Jenkinsfile.security — Escaneo continuo de vulnerabilidades (Punto 8)
+//
+// Pipeline programado que corre diariamente (H 2 * * * = ~02:00 AM local).
+// Realiza dos tipos de escaneo:
+//   1. Trivy image  → vulnerabilidades HIGH/CRITICAL en las 8 imágenes Docker
+//   2. Trivy config → misconfiguraciones IaC en k8s/ y terraform/
+//
+// Los reportes se archivan en Jenkins y, si hay fallos, se envía email a
+// devops@circleguard.local.
+//
+// Configuración en Jenkins:
+//   - Crear un nuevo Pipeline apuntando a este Jenkinsfile
+//   - La trigger cron se define aquí; no requiere configuración adicional
+//   - Requiere: docker disponible en el agente, credencial de email configurada
+// ─────────────────────────────────────────────────────────────────────────────
+
+pipeline {
+    agent any
+
+    options {
+        timeout(time: 45, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '30'))
+        disableConcurrentBuilds()
+    }
+
+    // ── Ejecución nocturna automática ─────────────────────────────────────────
+    triggers {
+        // H: distribución aleatoria dentro de la hora para evitar sobrecargas
+        // 2 * * * = entre 02:00 y 02:59 AM cada día
+        cron('H 2 * * *')
+    }
+
+    environment {
+        REGISTRY   = 'circleguard'
+        IMAGE_TAG  = 'latest'
+        DOCKER_HOST = 'unix:///var/run/docker.sock'
+        // Modo no-bloqueante: el scan diario reporta sin interrumpir despliegues
+        // Cambiar a '1' si se quiere que el job falle con vulnerabilidades
+        TRIVY_EXIT_CODE = '0'
+    }
+
+    stages {
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Trivy: Escaneo de Imágenes') {
+            // Escanea las 8 imágenes Docker buscando vulnerabilidades HIGH y CRITICAL.
+            // Genera un reporte HTML por imagen, archivado como artefacto.
+            steps {
+                sh '''
+                    mkdir -p trivy-reports
+                    SCAN_FAIL=0
+                    for svc in file gateway dashboard form notification promotion auth identity; do
+                        echo "Escaneando ${REGISTRY}/${svc}-service:${IMAGE_TAG}..."
+                        docker run --rm \
+                            -v /var/run/docker.sock:/var/run/docker.sock \
+                            -v "$PWD/trivy-reports":/out \
+                            -v "$PWD/.trivyignore":/.trivyignore \
+                            aquasec/trivy:latest image \
+                            --severity HIGH,CRITICAL \
+                            --exit-code ${TRIVY_EXIT_CODE} \
+                            --ignorefile /.trivyignore \
+                            --format template \
+                            --template "@contrib/html.tpl" \
+                            -o /out/sec-daily-trivy-${svc}.html \
+                            ${REGISTRY}/${svc}-service:${IMAGE_TAG} || SCAN_FAIL=1
+                    done
+                    if [ "${TRIVY_EXIT_CODE}" = "1" ] && [ "${SCAN_FAIL}" = "1" ]; then
+                        echo "Trivy: se encontraron vulnerabilidades HIGH/CRITICAL."
+                        exit 1
+                    fi
+                    echo "Trivy image scan completado (reportes en trivy-reports/)."
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'trivy-reports/sec-daily-trivy-*.html',
+                                     allowEmptyArchive: true
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Trivy: Escaneo IaC') {
+            // Escanea manifests K8s y módulos Terraform en busca de misconfiguraciones
+            // de seguridad HIGH/CRITICAL (modo config de Trivy).
+            steps {
+                sh '''
+                    mkdir -p trivy-reports
+                    echo "Escaneando k8s/ con Trivy config..."
+                    docker run --rm \
+                        -v "$PWD":/src \
+                        -v "$PWD/trivy-reports":/out \
+                        aquasec/trivy:latest config \
+                        --severity HIGH,CRITICAL \
+                        --exit-code ${TRIVY_EXIT_CODE} \
+                        --format template \
+                        --template "@contrib/html.tpl" \
+                        -o /out/sec-daily-trivy-iac-k8s.html \
+                        /src/k8s || true
+                    echo "Escaneando terraform/ con Trivy config..."
+                    docker run --rm \
+                        -v "$PWD":/src \
+                        -v "$PWD/trivy-reports":/out \
+                        aquasec/trivy:latest config \
+                        --severity HIGH,CRITICAL \
+                        --exit-code ${TRIVY_EXIT_CODE} \
+                        --format template \
+                        --template "@contrib/html.tpl" \
+                        -o /out/sec-daily-trivy-iac-terraform.html \
+                        /src/terraform || true
+                    echo "Trivy IaC scan completado (reportes en trivy-reports/)."
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'trivy-reports/sec-daily-trivy-iac-*.html',
+                                     allowEmptyArchive: true
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Resumen') {
+            steps {
+                sh '''
+                    echo "=== Resumen Escaneo de Seguridad Diario ==="
+                    echo "Fecha    : $(date)"
+                    echo "Imágenes : $(ls trivy-reports/sec-daily-trivy-*.html 2>/dev/null | grep -v iac | wc -l) reportes"
+                    echo "IaC      : $(ls trivy-reports/sec-daily-trivy-iac-*.html 2>/dev/null | wc -l) reportes"
+                    echo "Artefactos archivados en Jenkins Build #${BUILD_NUMBER}."
+                '''
+            }
+        }
+
+    }
+
+    post {
+        always {
+            echo "Escaneo de seguridad diario finalizado: ${currentBuild.currentResult}"
+        }
+        failure {
+            emailext(
+                subject: "🔴 SEGURIDAD: Vulnerabilidades detectadas — ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: """Escaneo de seguridad diario encontró vulnerabilidades HIGH/CRITICAL.
+
+Job     : ${env.JOB_NAME}
+Build   : #${env.BUILD_NUMBER}
+Fecha   : ${new Date()}
+Consola : ${env.BUILD_URL}console
+Reportes: ${env.BUILD_URL}artifact/trivy-reports/
+
+Acciones recomendadas:
+  1. Revisar reportes HTML archivados en Jenkins.
+  2. Para vulnerabilidades en imagen: actualizar imagen base o parchear dependencias.
+  3. Para misconfiguraciones IaC: corregir el manifest/módulo afectado.
+  4. Si el CVE es aceptado: agregar a .trivyignore con justificación documentada.
+""",
+                to: 'devops@circleguard.local'
+            )
+        }
+        unstable {
+            emailext(
+                subject: "⚠️ SEGURIDAD: Scan inestable — ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: """El escaneo de seguridad diario finalizó con advertencias.
+
+Job     : ${env.JOB_NAME}
+Build   : #${env.BUILD_NUMBER}
+Consola : ${env.BUILD_URL}console
+""",
+                to: 'devops@circleguard.local'
+            )
+        }
+        success {
+            echo "Escaneo diario LIMPIO — sin vulnerabilidades HIGH/CRITICAL bloqueantes."
+        }
+    }
+}

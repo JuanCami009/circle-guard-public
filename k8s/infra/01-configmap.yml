@@ -27,3 +27,14 @@ data:
   SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
   SPRING_JPA_HIBERNATE_DDL_AUTO: update
   SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.PostgreSQLDialect
+
+  # ── Observabilidad (Punto 7) ──────────────────────────────────────────────
+  # Actuator: exponer health (con readiness/liveness), métricas y prometheus
+  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,prometheus,metrics"
+  MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
+  MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: "always"
+  # Etiqueta global aplicada a todas las métricas Micrometer
+  MANAGEMENT_METRICS_TAGS_APPLICATION: circleguard
+  # Tracing distribuido: muestreo 100% y envío de spans a Zipkin
+  MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
+  MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin-svc:9411/api/v2/spans

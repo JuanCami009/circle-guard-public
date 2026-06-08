@@ -24,6 +24,10 @@ resource "kubernetes_deployment_v1" "this" {
       }
 
       spec {
+        # ── RBAC: dedicated SA + no token automount (Punto 8) ─────────────
+        service_account_name             = var.service_account_name
+        automount_service_account_token  = var.automount_service_account_token
+
         # ── initContainers: wait for dependencies before starting ──────────
         dynamic "init_container" {
           for_each = var.init_wait_for

@@ -2,7 +2,8 @@ package com.circleguard.auth.controller;
 
 import com.circleguard.auth.service.JwtTokenService;
 import com.circleguard.auth.client.IdentityClient;
-import lombok.RequiredArgsConstructor;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.*;
 import org.springframework.security.core.Authentication;
@@ -11,18 +12,38 @@ import java.util.*;
 
 @RestController
 @RequestMapping("/api/v1/auth")
-@RequiredArgsConstructor
 public class LoginController {
 
     private final AuthenticationManager authManager;
     private final JwtTokenService jwtService;
     private final IdentityClient identityClient;
 
+    // ── Métricas de negocio: logins por resultado (Punto 7) ───────────────
+    private final Counter loginSuccess;
+    private final Counter loginFailure;
+
+    public LoginController(AuthenticationManager authManager,
+                           JwtTokenService jwtService,
+                           IdentityClient identityClient,
+                           MeterRegistry meterRegistry) {
+        this.authManager    = authManager;
+        this.jwtService     = jwtService;
+        this.identityClient = identityClient;
+        this.loginSuccess = Counter.builder("circleguard_logins_total")
+                                   .description("Total de intentos de login en auth-service")
+                                   .tag("result", "success")
+                                   .register(meterRegistry);
+        this.loginFailure = Counter.builder("circleguard_logins_total")
+                                   .description("Total de intentos de login en auth-service")
+                                   .tag("result", "failure")
+                                   .register(meterRegistry);
+    }
+
     @PostMapping("/login")
     public ResponseEntity<Map<String, String>> login(@RequestBody Map<String, String> request) {
         String username = request.get("username");
         String password = request.get("password");
-        
+
         System.out.println("Login attempt for user: " + username + " (pass length: " + (password != null ? password.length() : 0) + ")");
 
         try {
@@ -39,6 +60,8 @@ public class LoginController {
             // 3. Issue Token
             String token = jwtService.generateToken(anonymousId, auth);
 
+            loginSuccess.increment(); // ── métrica de negocio
+
             return ResponseEntity.ok(Map.of(
                     "token", token,
                     "type", "Bearer",
@@ -46,10 +69,12 @@ public class LoginController {
             ));
         } catch (org.springframework.security.core.AuthenticationException e) {
             System.err.println("Authentication failed for " + username + ": " + e.getMessage());
+            loginFailure.increment(); // ── métrica de negocio
             return ResponseEntity.status(401).body(Map.of("message", "Invalid username or password"));
         } catch (Exception e) {
             System.err.println("Unexpected error during login for " + username + ":");
             e.printStackTrace();
+            loginFailure.increment(); // ── métrica de negocio
             return ResponseEntity.status(500).body(Map.of("message", "Internal server error: " + e.getMessage()));
         }
     }
@@ -60,18 +85,18 @@ public class LoginController {
         if (anonymousIdStr == null) {
             return ResponseEntity.badRequest().build();
         }
-        
+
         UUID anonymousId = UUID.fromString(anonymousIdStr);
-        
+
         // Create a dummy authentication for the visitor
         Authentication visitorAuth = new UsernamePasswordAuthenticationToken(
-                anonymousIdStr, 
-                null, 
+                anonymousIdStr,
+                null,
                 List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("VISITOR"))
         );
-        
+
         String token = jwtService.generateToken(anonymousId, visitorAuth);
-        
+
         return ResponseEntity.ok(Map.of(
                 "token", token,
                 "handoffPayload", "HANDOFF_TOKEN:" + anonymousId.toString() + ":" + token

@@ -21,6 +21,9 @@ module "cluster" {
     { container_port = var.nodeport_base + 92,  host_port = var.nodeport_base + 92  }, # kibana UI
     { container_port = var.nodeport_base + 93,  host_port = var.nodeport_base + 93  }, # zipkin UI
     { container_port = var.nodeport_base + 94,  host_port = var.nodeport_base + 94  }, # alertmanager UI
+    # ── Seguridad (Punto 8) ───────────────────────────────────────────────
+    { container_port = var.nodeport_base + 80,  host_port = var.nodeport_base + 80  }, # ingress HTTP
+    { container_port = var.nodeport_base + 443, host_port = var.nodeport_base + 443 }, # ingress HTTPS (TLS)
   ]
 }
 
@@ -224,7 +227,7 @@ locals {
         SPRING_LDAP_URLS      = "ldap://openldap-svc:389"
         SPRING_LDAP_BASE      = "dc=circleguard,dc=edu"
         SPRING_LDAP_USERNAME  = "cn=admin,dc=circleguard,dc=edu"
-        SPRING_LDAP_PASSWORD  = "admin"
+        # SPRING_LDAP_PASSWORD eliminado (Punto 8): se inyecta desde circleguard-secrets via envFrom
       }
       resources = {
         requests = { memory = "256Mi", cpu = "100m" }
@@ -240,9 +243,8 @@ locals {
       extra_env = {
         SERVER_PORT           = "8083"
         SPRING_DATASOURCE_URL = "jdbc:postgresql://postgres-svc:5432/circleguard_identity"
-        VAULT_SECRET          = "my-vault-secret-key-32-chars-1234"
-        VAULT_SALT            = "deadbeef"
-        VAULT_HASH_SALT       = "12345678"
+        # VAULT_SECRET / VAULT_SALT / VAULT_HASH_SALT eliminados (Punto 8):
+        # se inyectan desde circleguard-secrets via envFrom
       }
       resources = {
         requests = { memory = "256Mi", cpu = "100m" }
@@ -333,6 +335,14 @@ locals {
   }
 }
 
+# ── 7. RBAC (Punto 8 — Seguridad) ─────────────────────────────────────────────
+module "rbac" {
+  source        = "../../modules/k8s-rbac"
+  namespace     = module.ns.name
+  service_names = keys(local.services)
+  depends_on    = [module.ns]
+}
+
 module "services" {
   for_each = local.services
   source   = "../../modules/k8s-microservice"
@@ -350,9 +360,22 @@ module "services" {
   extra_env      = each.value.extra_env
   init_wait_for  = each.value.init
 
+  # ── Seguridad (Punto 8): SA dedicada, sin token automontado ──────────────
+  service_account_name            = module.rbac.service_account_names[each.key]
+  automount_service_account_token = false
+
   # file-service needs a persistent uploads volume
   volume_mounts = each.key == "file-service" ? [{ name = "uploads", mount_path = "/app/uploads", read_only = false }] : []
   volumes       = each.key == "file-service" ? [{ name = "uploads", type = "emptyDir" }] : []
 
-  depends_on = [module.config, module.postgres, module.neo4j, module.kafka, module.redis, module.openldap, module.mailhog]
+  depends_on = [module.config, module.postgres, module.neo4j, module.kafka, module.redis, module.openldap, module.mailhog, module.rbac]
+}
+
+# ── 8. Ingress-nginx + TLS (Punto 8 — Seguridad) ──────────────────────────────
+module "ingress" {
+  source         = "../../modules/k8s-ingress"
+  namespace      = module.ns.name
+  nodeport_http  = var.nodeport_base + 80
+  nodeport_https = var.nodeport_base + 443
+  depends_on     = [module.services]
 }

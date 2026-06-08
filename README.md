@@ -35,6 +35,10 @@ Se implementó `Jenkinsfile.master` para despliegue en el namespace canónico `c
 
 Documentación completa en `docs/` con un archivo por punto. Video de evidencia en https://youtu.be/D9iUHjesDdI mostrando ejecución de los pipelines dev, stage y master, resultados de pruebas y generación de release notes.
 
+### [Punto 6 (Proyecto Final) - Change Management y Release Notes (5%)](docs/08-punto6-change-management.md)
+
+Implementación del proceso formal de Change Management sobre GitFlow y el pipeline de Jenkins. Incluye: (1) generación automática de Release Notes en `Jenkinsfile.master` (stage `Release Notes`, línea 622) clasificando commits por Conventional Commits; (2) versionado semántico automático con `scripts/semver.sh` y etiquetado git `vX.Y.Z`; (3) proceso ITIL ligero con tipos de cambio (Standard/Normal/Emergency), roles y flujo completo de aprobación mapeado a las etapas reales del pipeline; (4) planes de rollback por escenario (rollout undo K8s y rollback por versión git) con script ejecutable `scripts/rollback.sh`.
+
 ---
 
 ## Archivos por Punto
@@ -46,6 +50,10 @@ Archivo / Ruta | Descripción |
 | [`docs/03-punto3-pruebas.md`](docs/03-punto3-pruebas.md) | Documentación Punto 3 |
 | [`docs/04-punto4-stage.md`](docs/04-punto4-stage.md) | Documentación Punto 4 |
 | [`docs/05-punto5-master.md`](docs/05-punto5-master.md) | Documentación Punto 5 |
+| [`docs/08-punto6-change-management.md`](docs/08-punto6-change-management.md) | Change Management y Release Notes (Punto 6 Proyecto Final) |
+| [`scripts/rollback.sh`](scripts/rollback.sh) | Script de rollback de deployments K8s |
+| [`scripts/semver.sh`](scripts/semver.sh) | Versionado semántico automático (Conventional Commits) |
+| [`CHANGELOG.md`](CHANGELOG.md) | Historial consolidado de releases (Keep a Changelog) |
 
 ---
 

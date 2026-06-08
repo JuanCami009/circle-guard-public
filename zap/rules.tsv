@@ -1,0 +1,38 @@
+# ZAP Baseline Rules — CircleGuard
+# Formato: <ruleId>\t<IGNORE|WARN|FAIL>\t<comentario>
+# Referencia de IDs: https://www.zaproxy.org/docs/alerts/
+#
+# CircleGuard es una API REST (sin UI web), por lo que varias
+# reglas orientadas a navegadores son falsos positivos estructurales.
+# Las reglas aquí marcadas como IGNORE tienen justificación explícita.
+#
+# Para agregar una exclusión CVE específica (ej. en una ruta determinada),
+# usar el formato extendido: <ruleId>\t<action>\t<patrón-URL>
+# ============================================================
+
+# ── Falsos positivos de API sin UI ──────────────────────────────────────
+10038	IGNORE	Content Security Policy — no aplica a APIs REST sin frontend
+10037	IGNORE	Server Leaks Information via "X-Powered-By" HTTP Response Header — aceptado en entorno universitario
+10021	IGNORE	X-Content-Type-Options Header Missing — CDN/gateway lo gestiona
+10027	IGNORE	Information Disclosure - Suspicious Comments — comentarios de desarrollo no exponen datos sensibles
+90022	IGNORE	Application Error Disclosure — Spring Boot gestiona errores con ControllerAdvice
+10036	IGNORE	Server Leaks Version Information via "Server" HTTP Response Header — Spring Boot default, no hay datos sensibles
+
+# ── Cookies: API usa JWT Bearer, no cookies de sesión ───────────────────
+10012	IGNORE	Cookie No HttpOnly Flag — JWTs se transmiten en Bearer header, no en cookies
+10011	IGNORE	Cookie Without Secure Flag — idem
+10054	IGNORE	Cookie with SameSite Attribute None — idem
+
+# ── CORS: intencional — API consumida por app móvil + dashboard ─────────
+10098	IGNORE	Cross-Domain Misconfiguration — CORS abierto es intencional para la app móvil Expo
+
+# ── Falsos positivos de actualizaciones de Swagger/OpenAPI ──────────────
+90003	IGNORE	Sub Resource Integrity Attribute Missing — Swagger UI CDN resources
+
+# ── Reglas activas (WARN genera reporte sin bloquear pipeline) ──────────
+10010	WARN	Cookie No HttpOnly Flag — solo WARN; aplicar IGNORE si solo se usan JWTs
+40012	FAIL	Cross Site Scripting (Reflected) — fallo real, corregir de inmediato
+40014	FAIL	Cross Site Scripting (Persistent) — fallo real
+90019	FAIL	Server Side Code Injection — fallo real
+40018	FAIL	SQL Injection — fallo real
+90017	FAIL	XSLT Injection — fallo real

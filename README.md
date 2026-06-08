@@ -43,6 +43,10 @@ Implementación del proceso formal de Change Management sobre GitFlow y el pipel
 
 Implementación completa del stack de observabilidad sobre los 8 microservicios Spring Boot. Incluye: (1) **Prometheus + Grafana** con dashboards por servicio (variable `$service`) y dashboard de métricas de negocio provisionados automáticamente vía ConfigMap; (2) **ELK Stack** (Elasticsearch 8.13 + Logstash + Kibana + Filebeat DaemonSet) con logs JSON via `LogstashEncoder` + trazas correladas por `traceId`; (3) **Alertas** — 5 reglas en Prometheus (`ServiceDown`, `HighErrorRate`, `HighLatencyP99`, `HighJvmHeapUsage`, `NoHealthStatusUpdates`) → Alertmanager → MailHog SMTP; (4) **Tracing distribuido** con Zipkin y `micrometer-tracing-bridge-brave` (100% sampling, headers B3); (5) **Health probes HTTP** (`startupProbe` + `livenessProbe` + `readinessProbe` en `/actuator/health/liveness|readiness`) en todos los manifests K8s y módulo Terraform genérico; (6) **Métricas de negocio** custom con Micrometer Counters en 4 servicios (logins, surveys, status updates, notifications). Módulos Terraform en `terraform/modules/k8s-{prometheus,grafana,elasticsearch,logstash,kibana,filebeat,zipkin,alertmanager}/` y manifests estáticos en `k8s/infra/10-17-*.yml`.
 
+### [Punto 8 (Proyecto Final) - Seguridad (5%)](docs/10-punto8-seguridad.md)
+
+Implementación completa de las cuatro capacidades de seguridad sobre la arquitectura CircleGuard. Incluye: (1) **Escaneo continuo de vulnerabilidades** con Trivy en dos modos — `image` (8 imágenes Docker, existente desde Punto 4) y `config` (IaC/misconfig sobre `k8s/` y `terraform/`) añadido a los tres Jenkinsfiles + `Jenkinsfile.security` con cron diario nocturno (`H 2 * * *`) y notificación por email; (2) **Gestión segura de secretos** vía AWS Secrets Manager (LocalStack) → `circleguard-secrets` K8s Secret → `envFrom` — se eliminaron los secretos inline de `auth-service` (`SPRING_LDAP_PASSWORD`) e `identity-service` (`VAULT_SECRET/SALT/HASH_SALT`) que evadían el Secret; (3) **RBAC** — ServiceAccount dedicada por microservicio con `automountServiceAccountToken: false` + Roles namespaced `circleguard-developer` (read-only) y `circleguard-ci-deployer` (deploy) en módulo `k8s-rbac/` y manifest `18-rbac.yml`; (4) **TLS** — ingress-nginx vía Helm + certificado self-signed generado por `hashicorp/tls` + Ingress HTTPS `circleguard.local → gateway-service` en módulo `k8s-ingress/` y manifest `19-ingress.yml`, puertos `30443/31443/32443` por ambiente.
+
 ---
 
 ## Archivos por Punto
@@ -75,6 +79,12 @@ Archivo / Ruta | Descripción |
 | [`k8s/infra/15-filebeat.yml`](k8s/infra/15-filebeat.yml) | Manifest estático — Filebeat |
 | [`k8s/infra/16-zipkin.yml`](k8s/infra/16-zipkin.yml) | Manifest estático — Zipkin |
 | [`k8s/infra/17-grafana.yml`](k8s/infra/17-grafana.yml) | Manifest estático — Grafana |
+| [`docs/10-punto8-seguridad.md`](docs/10-punto8-seguridad.md) | Seguridad (Punto 8 Proyecto Final) |
+| [`terraform/modules/k8s-rbac/`](terraform/modules/k8s-rbac/) | Módulo Terraform — RBAC: SAs por servicio + Roles developer/ci-deployer |
+| [`terraform/modules/k8s-ingress/`](terraform/modules/k8s-ingress/) | Módulo Terraform — ingress-nginx + TLS self-signed + Ingress |
+| [`k8s/infra/18-rbac.yml`](k8s/infra/18-rbac.yml) | Manifest estático — RBAC (ServiceAccounts, Roles, RoleBindings) |
+| [`k8s/infra/19-ingress.yml`](k8s/infra/19-ingress.yml) | Manifest estático — Secret TLS + Ingress HTTPS |
+| [`Jenkinsfile.security`](Jenkinsfile.security) | Pipeline cron — escaneo continuo Trivy (imágenes + IaC) |
 
 ---
 

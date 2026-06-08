@@ -13,6 +13,9 @@ spec:
       labels:
         app: auth-service
     spec:
+      # ── Seguridad (Punto 8): SA dedicada, token no automontado ───────────
+      serviceAccountName: auth-service-sa
+      automountServiceAccountToken: false
       initContainers:
         - name: wait-for-postgres
           image: busybox:1.36
@@ -66,8 +69,7 @@ spec:
               value: "dc=circleguard,dc=edu"
             - name: SPRING_LDAP_USERNAME
               value: "cn=admin,dc=circleguard,dc=edu"
-            - name: SPRING_LDAP_PASSWORD
-              value: "admin"
+            # SPRING_LDAP_PASSWORD eliminado (Punto 8): se inyecta desde circleguard-secrets via envFrom
           resources:
             requests:
               memory: "256Mi"

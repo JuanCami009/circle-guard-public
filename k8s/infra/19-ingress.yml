@@ -1,0 +1,64 @@
+# ── Seguridad (Punto 8): Ingress TLS ────────────────────────────────────────
+# Secret TLS self-signed (generado para dev) + Ingress-nginx que termina HTTPS
+# y enruta al gateway-service.
+#
+# Pre-requisito: instalar el controlador ingress-nginx en el cluster:
+#   kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.1/deploy/static/provider/kind/deploy.yaml
+#
+# Acceso local:
+#   echo "127.0.0.1 circleguard.local" | sudo tee -a /etc/hosts
+#   curl -k -H 'Host: circleguard.local' https://localhost:30443/
+#
+# Para regenerar el certificado:
+#   openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+#     -keyout tls.key -out tls.crt -subj "/CN=circleguard.local/O=CircleGuard"
+#   kubectl create secret tls circleguard-tls --cert=tls.crt --key=tls.key \
+#     -n circleguard --dry-run=client -o yaml > k8s/infra/19-ingress.yml (sección Secret)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Secret TLS (cert self-signed dev — NO usar en producción real) ────────────
+# Los valores son un cert/key self-signed para CN=circleguard.local generados
+# con openssl para el entorno de desarrollo local (kind).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: circleguard-tls
+  namespace: circleguard
+  annotations:
+    circleguard/cert-type: "self-signed-dev"
+    circleguard/cert-cn: "circleguard.local"
+    circleguard/cert-expires: "365d-from-generation"
+type: kubernetes.io/tls
+data:
+  # Regenerar con: openssl req -x509 -nodes -days 365 -newkey rsa:2048
+  #   -keyout tls.key -out tls.crt -subj "/CN=circleguard.local/O=CircleGuard"
+  # Luego: base64 -i tls.crt | tr -d '\n'  y  base64 -i tls.key | tr -d '\n'
+  tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUNwRENDQVl3Q0NRQ3FFNUtqbHlTOFREQU5CZ2txaGtpRzl3MEJBUXNGQURBV01SY3dGUVlEVlFRRERBNWoKYVhKbGJHeGxaM1F1Ykc5allXd3dIaGNOTWpZd05qQTRNVEF3TURBd1doY05Nell3TmpBNE1UQXdNREF3V2pBVwpNUlF3RWdZRFZRUUREQXRqYVhKbGJHeGxaM1F1Ykc5allXd3dnWjh3RFFZSktvWklodmNOQVFFQkJRQURnWTBBCk1JR0pBb0dCQU1OcGxpS3lRSGR0MGtIMGJZMzl3Y09kc3A2emFtNGVSN0hVWVNhRHFaYUtEYUZmdFh0L1YrVHAKMlVhOUhKWVN0d2tUMFBPb0lmVzdROVRHRXIydFVybFY5SXpxS2NlWUs4RVFlZVJEOUhZbHJZZDhuMDczV3NHOQpSR3ZFa201VnQrZ1puZHcwRzFaS2FQeHE4V2kwT1RMYUgwZ3NsNHJTaEdrVENMZXJMOWZMQWdNQkFBRXdEUVlKCktvWklodmNOQVFFTEJRQURnZ0VCQUNuNTRjSTVQMXZtS1dNSGdtd2E4TjROcmhWL0VHTktjSCtUQ3lLZitERUsKMGlPVytxQUp3VEd4V21MdzNxWkMvTnFPcVZhYUFnWmdacmpXM0lmWEVwQytlbUhLMlVHZERxTE5ldEdRb2hlQgpONVRxS2pueGVrYlc3TERsemQzbXVaaGZyZ0dIbHNZU1p3NE9OWVluUVVpblk3cGRQQjQyUHhTam5reXVBbFBqCjZCeVhiMGlreHFhVE1hYzZZT0FSS29iSFpPcStiN25NUllkU3dZbFdIN1pJNXpMOXhZa1hvUzJ0MWVNRTExd2oKbS9nVFZrUWZBaFp2TkhmYlNOdW1ZSlN3YWFUSkl1bHFEb2JVOG9haVpPelBpTXBjbEJQdkpnYXdGaFFUVHcxeQpVUnMwS21uL1RYUDdwMEIyd0lRb3g3dGExaTVqOVkvaFJsMHlhNW89Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+  tls.key: LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JSUNlQUlCQURBTkJna3Foa2lHOXcwQkFRRUZBQVNDQW1Jd2dnSmVBZ0VBQW9HQkFNTnBsaUt5UUhkdDBrSDAKYlkzOXdjT2RzcDZ6YW00ZVI3SFVZUWFEcVphS0RhRmZ0WHQvVitUcDJVYTlISllTdHdrVDBQT29JZlc3UTlURwpFcjJ0VXJsVjlJenFLY2VZSzhFUWVlUkQ5SFlsclljOG4wNzNXc0c5Ukd2RWttNVZ0K2daZGR3MEcxWkthUHhxCjhXaTBPVExhSDBnc2w0clNoR2tUQ0xlckw5ZkxBZ01CQUFFQ2dZQkF2N0NSamhLd09VV3VXb3h6OGoxTVpJOTEKaHNkOWkyNEVXWmVFU3I5VXdkbHVsK0Z1WXBjZHRsOWlEM3JnelV4RmloYlZLNTRpZXVmTjVuaW5leW00cmVGbApFc3JXZFFGQ2MvRzVEOUs5Vlh5SmpsMThXMFJQc1hLTllvbXlkVTdlODhWc3Bnbkk5T3dmc1EyQi9pUzQ3bjNkCkhkNWJHR0hJTlNhREVOWlJRUUpCQVB1OVBVa1Z4K0U0cFVVMlpQanJ5d0lWQ0M2djZlaTF4ZkVOam8vY3lmaUEKamJDdDBsWHBFZ21DSGo2TW93dnBsckN4N3pROGVueTBlaHlkWFk4M2xyTUNRUURHdlFycnB5T0gxK01YaEhJVgpOK2lxaUJFR1lkZk5DL2xSVEhCN3NCdEMwTlN4eUxqaVduUGlmekljZi9ZOFVEUmlEN2tqd0M3T2x0dFJkNjljCmFWOXRBa0VBbTZmbnBiSFY4dmEvNHg0Z0BHTFY5Ulh2S1ExMHQ0OGJ6ZVpOcHVNQmNMcDlTZmg3S2VGYVlzZzQKczFoKzlFMU1aOHF5dGNaeXlNa0ZnbCtJSEoyNFF3SkJBTDQwMXFSVTc1czZkVmNHVGZrMjFJR1ZzdVdvWGlkMgowZjd4UWtKWWVOelZmbGZLbFBHYzZmWVBuUlB4eXFnY1pnY0dlYmhITG92dllybWEycTBGWkVFQ1FGNy9hc3RFCjZRL25RRFRCQ3c0dFYxRVJBcVowbWxxekZibXFxVG1PNTBxNU1WYkN3U0NONTV0eVhIY1ZPZFBONWo0T2tjeGoKaGFjRkFRRlhRL0d1djZzPQotLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tCg==
+---
+# ── Ingress: HTTPS → gateway-service ─────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: circleguard-ingress
+  namespace: circleguard
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: "/$2"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - circleguard.local
+      secretName: circleguard-tls
+  rules:
+    - host: circleguard.local
+      http:
+        paths:
+          - path: /()(.*)
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway-service-svc
+                port:
+                  number: 8087

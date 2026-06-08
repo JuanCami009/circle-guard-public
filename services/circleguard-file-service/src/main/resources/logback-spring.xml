@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Logback configuration for CircleGuard services.
+     Outputs structured JSON logs to stdout so Filebeat can forward them
+     to Logstash → Elasticsearch. The LogstashEncoder automatically includes
+     traceId and spanId MDC fields injected by micrometer-tracing-bridge-brave. -->
+<configuration>
+  <appender name="JSON_STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+      <!-- Retain micrometer-tracing MDC keys in every log line -->
+      <includeMdcKeyName>traceId</includeMdcKeyName>
+      <includeMdcKeyName>spanId</includeMdcKeyName>
+      <includeMdcKeyName>parentId</includeMdcKeyName>
+      <includeMdcKeyName>X-B3-TraceId</includeMdcKeyName>
+      <includeMdcKeyName>X-B3-SpanId</includeMdcKeyName>
+    </encoder>
+  </appender>
+
+  <!-- Reduce noise from internal framework packages -->
+  <logger name="org.springframework.web" level="WARN"/>
+  <logger name="org.hibernate"           level="WARN"/>
+  <logger name="org.apache.kafka"        level="WARN"/>
+  <logger name="com.zaxxer.hikari"       level="WARN"/>
+
+  <root level="INFO">
+    <appender-ref ref="JSON_STDOUT"/>
+  </root>
+</configuration>

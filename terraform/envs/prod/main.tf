@@ -15,6 +15,12 @@ module "cluster" {
     { container_port = var.nodeport_base + 84,  host_port = var.nodeport_base + 84  },
     { container_port = var.nodeport_base + 474, host_port = var.nodeport_base + 474 }, # neo4j browser
     { container_port = var.nodeport_base + 25,  host_port = var.nodeport_base + 25  }, # mailhog UI
+    # ── Observabilidad (Punto 7) ─────────────────────────────────────────
+    { container_port = var.nodeport_base + 90,  host_port = var.nodeport_base + 90  }, # prometheus UI
+    { container_port = var.nodeport_base + 91,  host_port = var.nodeport_base + 91  }, # grafana UI
+    { container_port = var.nodeport_base + 92,  host_port = var.nodeport_base + 92  }, # kibana UI
+    { container_port = var.nodeport_base + 93,  host_port = var.nodeport_base + 93  }, # zipkin UI
+    { container_port = var.nodeport_base + 94,  host_port = var.nodeport_base + 94  }, # alertmanager UI
   ]
 }
 
@@ -88,6 +94,13 @@ module "config" {
     SPRING_DATASOURCE_DRIVER_CLASS_NAME              = "org.postgresql.Driver"
     SPRING_JPA_HIBERNATE_DDL_AUTO                    = "update"
     SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT          = "org.hibernate.dialect.PostgreSQLDialect"
+    # ── Observabilidad (Punto 7) ──────────────────────────────────────────
+    MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE        = "health,info,prometheus,metrics"
+    MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED        = "true"
+    MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS          = "always"
+    MANAGEMENT_METRICS_TAGS_APPLICATION              = "circleguard"
+    MANAGEMENT_TRACING_SAMPLING_PROBABILITY          = "1.0"
+    MANAGEMENT_ZIPKIN_TRACING_ENDPOINT               = "http://zipkin-svc:9411/api/v2/spans"
   }
   depends_on = [module.ns, module.secrets]
 }
@@ -131,6 +144,68 @@ module "mailhog" {
   namespace    = module.ns.name
   nodeport_ui  = var.nodeport_base + 25
   depends_on   = [module.ns]
+}
+
+# ── 5b. Observabilidad (Punto 7) ───────────────────────────────────────────────
+module "elasticsearch" {
+  source     = "../../modules/k8s-elasticsearch"
+  namespace  = module.ns.name
+  depends_on = [module.ns]
+}
+
+module "logstash" {
+  source            = "../../modules/k8s-logstash"
+  namespace         = module.ns.name
+  elasticsearch_url = "http://${module.elasticsearch.host}:${module.elasticsearch.port}"
+  depends_on        = [module.elasticsearch]
+}
+
+module "kibana" {
+  source            = "../../modules/k8s-kibana"
+  namespace         = module.ns.name
+  nodeport_ui       = var.nodeport_base + 92
+  elasticsearch_url = "http://${module.elasticsearch.host}:${module.elasticsearch.port}"
+  depends_on        = [module.elasticsearch]
+}
+
+module "filebeat" {
+  source        = "../../modules/k8s-filebeat"
+  namespace     = module.ns.name
+  logstash_host = "${module.logstash.host}:${module.logstash.beats_port}"
+  depends_on    = [module.logstash]
+}
+
+module "zipkin" {
+  source      = "../../modules/k8s-zipkin"
+  namespace   = module.ns.name
+  nodeport_ui = var.nodeport_base + 93
+  depends_on  = [module.ns]
+}
+
+module "alertmanager" {
+  source      = "../../modules/k8s-alertmanager"
+  namespace   = module.ns.name
+  nodeport_ui = var.nodeport_base + 94
+  smtp_host   = "${module.mailhog.smtp_host}:${module.mailhog.smtp_port}"
+  depends_on  = [module.mailhog]
+}
+
+module "prometheus" {
+  source           = "../../modules/k8s-prometheus"
+  namespace        = module.ns.name
+  nodeport_ui      = var.nodeport_base + 90
+  alertmanager_url = "http://${module.alertmanager.host}:${module.alertmanager.port}"
+  depends_on       = [module.alertmanager, module.ns]
+}
+
+module "grafana" {
+  source            = "../../modules/k8s-grafana"
+  namespace         = module.ns.name
+  nodeport_ui       = var.nodeport_base + 91
+  prometheus_url    = "http://${module.prometheus.host}:${module.prometheus.port}"
+  elasticsearch_url = "http://${module.elasticsearch.host}:${module.elasticsearch.port}"
+  zipkin_url        = "http://${module.zipkin.host}:${module.zipkin.port}"
+  depends_on        = [module.prometheus, module.elasticsearch, module.zipkin]
 }
 
 # ── 6. Microservices ───────────────────────────────────────────────────────────

@@ -1,53 +1,106 @@
-# Punto 3: Pruebas - Unitarias, Integración, E2E y Rendimiento (30%)
+# Pruebas - Unitarias, Integración, E2E, Rendimiento y Seguridad
 
 ## Resumen
 
-Este documento describe todas las pruebas nuevas implementadas para el Punto 3 del Taller 2. Se definen cuatro niveles de prueba distribuidos entre los microservicios seleccionados:
+Este documento describe todas las pruebas implementadas en el proyecto. Se definen seis niveles de prueba distribuidos entre los microservicios backend y la aplicación móvil:
 
 | Tipo | Cantidad | Servicios cubiertos | Herramienta principal |
 |---|---|---|---|
-| Unitarias | 5 | promotion, auth, notification | JUnit 5 + Mockito |
-| Integración | 5 | promotion, notification, gateway, form, identity | JUnit 5 + Testcontainers / @SpringBootTest |
-| E2E | 5 flujos | Los 6 servicios del entorno dev | Bash + curl |
-| Rendimiento | 4 escenarios | promotion, form, gateway, dashboard | Locust |
+| Unitarias (backend) | 14 | promotion, auth, notification, dashboard, file | JUnit 5 + Mockito |
+| Integración (backend) | 10 | promotion, notification, gateway, form, identity, dashboard, file | JUnit 5 + Testcontainers / @SpringBootTest |
+| Unitarias (mobile) | 4 archivos | React Native / Expo | Jest + Testing Library |
+| E2E | 7 flujos | Los 8 servicios del entorno prod | Bash + curl |
+| Rendimiento | 6 escenarios | promotion, form, gateway, dashboard, auth, identity | Locust |
+| Seguridad | 8 servicios | Todos los microservicios | OWASP ZAP Baseline |
 
-### Localización de los nuevos archivos
+### Localización de todos los archivos de prueba
 
 ```
 services/
   circleguard-promotion-service/src/test/java/com/circleguard/promotion/
-    task/GraphCleanupTaskTest.java                    # Unit
-    service/LocationResolutionServiceTest.java        # Unit
-    integration/SurveyListenerIntegrationTest.java    # Integración
+    task/GraphCleanupTaskTest.java                          # Unit
+    service/LocationResolutionServiceTest.java              # Unit
+    service/HealthStatusServiceTest.java                    # Unit
+    service/StatusLifecycleTest.java                        # Unit
+    service/FloorServiceTest.java                           # Unit
+    integration/SurveyListenerIntegrationTest.java          # Integración
+    service/AdministrativeCorrectionTest.java               # Integración (Testcontainers)
+    service/HealthStatusReevaluationTest.java               # Integración (Testcontainers)
+    performance/PromotionPerformanceTest.java               # Rendimiento (Testcontainers)
 
-  circleguard-auth-service/src/test/java/com/circleguard/auth/service/
-    JwtTokenServiceTest.java                          # Unit
-    QrTokenServiceTest.java                           # Unit
+  circleguard-auth-service/src/test/java/com/circleguard/auth/
+    service/JwtTokenServiceTest.java                        # Unit
+    service/QrTokenServiceTest.java                         # Unit
+    controller/LoginControllerTest.java                     # Unit
+    controller/QrTokenControllerTest.java                   # Unit
+    controller/UserControllerTest.java                      # Unit
+    client/IdentityClientResilienceTest.java                # Unit
+    integration/AuthUserRepositoryIntegrationTest.java      # Integración
 
   circleguard-notification-service/src/test/java/com/circleguard/notification/
-    service/AuditLogServiceTest.java                  # Unit
-    integration/ExposureNotificationIntegrationTest.java  # Integración
+    service/AuditLogServiceTest.java                        # Unit
+    service/NotificationDispatcherTest.java                 # Unit
+    service/NotificationRetryTest.java                      # Unit
+    service/PushServiceToggleTest.java                      # Unit
+    service/ExposureNotificationListenerTest.java           # Unit
+    service/LmsServiceTest.java                             # Unit
+    service/PriorityAlertListenerTest.java                  # Unit
+    service/RoomReservationServiceTest.java                 # Unit
+    service/TemplateServiceTest.java                        # Unit
+    integration/ExposureNotificationIntegrationTest.java    # Integración
 
   circleguard-gateway-service/src/test/java/com/circleguard/gateway/
-    integration/GatewayValidationIntegrationTest.java # Integración
+    service/QrValidationServiceTest.java                    # Unit
+    service/QrValidationCacheTest.java                      # Unit
+    controller/GateControllerTest.java                      # Unit
+    integration/GatewayValidationIntegrationTest.java       # Integración
 
   circleguard-form-service/src/test/java/com/circleguard/form/
-    integration/QuestionnaireJpaIntegrationTest.java  # Integración
+    controller/HealthSurveyControllerTest.java              # Unit
+    controller/QuestionnaireControllerTest.java             # Unit
+    controller/AttachmentControllerTest.java                # Unit
+    service/SymptomMapperTest.java                          # Unit
+    integration/QuestionnaireJpaIntegrationTest.java        # Integración
 
   circleguard-identity-service/src/test/java/com/circleguard/identity/
-    integration/IdentityVaultServiceIntegrationTest.java  # Integración
+    controller/IdentityVaultControllerTest.java             # Unit
+    util/IdentityEncryptionConverterTest.java               # Unit
+    repository/IdentityMappingRepositoryTest.java           # Integración
+    integration/IdentityVaultServiceIntegrationTest.java    # Integración
+
+  circleguard-dashboard-service/src/test/java/com/circleguard/dashboard/
+    controller/AnalyticsControllerTest.java                 # Unit
+    service/KAnonymityFilterTest.java                       # Unit  ← nuevo
+    service/AnalyticsServiceTest.java                       # Unit  ← nuevo
+    integration/AnalyticsControllerIntegrationTest.java     # Integración  ← nuevo
+
+  circleguard-file-service/src/test/java/com/circleguard/file/
+    controller/FileUploadControllerTest.java                # Unit
+    service/FileStorageServiceTest.java                     # Unit  ← nuevo
+    integration/FileUploadIntegrationTest.java              # Integración  ← nuevo
+
+mobile/
+  hooks/useQrToken.test.ts                                  # Unit (mobile)
+  components/__tests__/DynamicForm.test.tsx                 # Unit (mobile)
+  context/__tests__/AuthContext.test.tsx                    # Unit (mobile)  ← nuevo
+  utils/__tests__/storage.test.ts                           # Unit (mobile)  ← nuevo
 
 e2e/
-  run_e2e.sh                                          # E2E (5 flujos)
+  run_e2e.sh                                                # E2E (7 flujos)
 
 locust/
-  locustfile.py                                       # Rendimiento
-  locust.conf                                         # Configuración
+  locustfile.py                                             # Rendimiento (6 perfiles)
+  locust.conf                                               # Configuración
+
+zap/
+  run_zap.sh                                                # Seguridad OWASP ZAP  ← nuevo
+  rules.tsv                                                 # Reglas de supresión  ← nuevo
+  README.md                                                 # Documentación ZAP    ← nuevo
 ```
 
 ---
 
-## 1. Pruebas Unitarias
+## 1. Pruebas Unitarias (backend)
 
 Las pruebas unitarias validan componentes individuales en completo aislamiento: sin Spring context, sin base de datos, sin red. Todas siguen el patrón `@ExtendWith(MockitoExtension.class)` con dependencias mockeadas.
 
@@ -176,6 +229,91 @@ void shouldIncludeAllFieldsInAuditEvent() {
 | `shouldIgnoreSignalFromUnmappedDevice` | Dispositivo sin sesión activa → `KafkaTemplate` y `GraphService` no son invocados |
 
 **Por qué es relevante**: el servicio debe garantizar privacidad por defecto - dispositivos sin sesión registrada (MACs aleatorizadas) son silenciados, no registrados.
+
+---
+
+### 1.6 KAnonymityFilterTest
+
+**Archivo**: `services/circleguard-dashboard-service/src/test/java/com/circleguard/dashboard/service/KAnonymityFilterTest.java`
+
+**Clase bajo prueba**: `KAnonymityFilter` - motor de privacidad k-anonimidad (Story 7.5, FR-23). Enmascara cualquier grupo de métricas con menos de K usuarios para prevenir re-identificación individual en departamentos o edificios pequeños.
+
+| Test | Comportamiento validado |
+|---|---|
+| `shouldReturnEmptyMapWhenStatsIsNull` | Input `null` → retorna mapa vacío sin NPE |
+| `shouldMaskEntireResultWhenTotalUsersBelowDefaultK` | `totalUsers=3` (< K=5) → resultado completo enmascarado, nota de privacidad, department/timestamp preservados |
+| `shouldMaskEntireResultWhenTotalUsersBelowCustomK` | K configurable: `totalUsers=8` con K=10 → enmascarado |
+| `shouldMaskIndividualCountsBelowKWhenTotalSufficient` | `totalUsers=100`, `suspectCount=2` → sólo `suspectCount` enmascarado a `"<5"` |
+| `shouldNotMaskCountsAtExactlyK` | Conteo exactamente igual a K no se enmascara |
+| `shouldNotMaskZeroCounts` | Ceros no implican riesgo de re-identificación, no se enmascaran |
+| `shouldNotMaskNonCountFields` | Campos que no terminan en `"Count"` no se tocan |
+| `shouldPreserveTimestampWhenMaskingEntireResult` | En enmascaramiento total, `timestamp` se preserva para correlación temporal |
+
+```java
+@Test
+void shouldMaskIndividualCountsBelowKWhenTotalSufficient() {
+    Map<String, Object> stats = new LinkedHashMap<>();
+    stats.put("totalUsers", 100L);
+    stats.put("suspectCount", 2L);    // < 5 → debe enmascararse
+    stats.put("confirmedCount", 10L); // >= 5 → debe mostrarse
+
+    Map<String, Object> result = filter.apply(stats);
+
+    assertThat(result.get("suspectCount")).isEqualTo("<5");
+    assertThat(result.get("confirmedCount")).isEqualTo(10L);
+}
+```
+
+**Por qué es relevante**: la k-anonimidad es el mecanismo central de privacidad del dashboard. Si falla, un coordinador podría cruzar datos de un departamento pequeño con información pública y re-identificar a una persona específica.
+
+---
+
+### 1.7 AnalyticsServiceTest
+
+**Archivo**: `services/circleguard-dashboard-service/src/test/java/com/circleguard/dashboard/service/AnalyticsServiceTest.java`
+
+**Clase bajo prueba**: `AnalyticsService` - orquesta consultas a `PromotionClient` (datos de salud) y aplica el filtro k-anonimidad. `PromotionClient` y `JdbcTemplate` se mockean completamente.
+
+| Test | Comportamiento validado |
+|---|---|
+| `getCampusSummaryShouldDelegateToPromotionClient` | Delega directamente a `PromotionClient.getHealthStats()` sin transformar |
+| `getDepartmentStatsShouldApplyKAnonymityFilter` | Llama a `PromotionClient.getHealthStatsByDepartment()` y aplica `kAnonymityFilter.apply()` sobre el resultado |
+| `getGlobalHealthStatsShouldDelegateToCampusSummary` | `getGlobalHealthStats()` es alias de `getCampusSummary()` |
+| `getTimeSeriesShouldReturnMockDataWhenTableDoesNotExist` | Cuando `JdbcTemplate` lanza excepción → fallback a datos mock (tabla puede no existir en PoC) |
+| `getTimeSeriesShouldLimitResults` | El parámetro `limit` acota correctamente el tamaño del resultado |
+
+**Por qué es relevante**: verifica que el filtro k-anonimidad se aplica en la capa correcta (servicio, no controlador) y que el fallback de time-series no expone excepciones al cliente.
+
+---
+
+### 1.8 FileStorageServiceTest
+
+**Archivo**: `services/circleguard-file-service/src/test/java/com/circleguard/file/service/FileStorageServiceTest.java`
+
+**Clase bajo prueba**: `FileStorageService` - persiste archivos subidos (certificados médicos, documentos) en el filesystem local con un UUID como prefijo de nombre. Usa `@TempDir` para aislar el test del filesystem real.
+
+| Test | Comportamiento validado |
+|---|---|
+| `saveFileShouldReturnGeneratedFilename` | Retorna un nombre no vacío con sufijo `_<originalName>` |
+| `saveFileShouldPersistFileToStorage` | El archivo existe en el path retornado y su contenido es idéntico al original |
+| `saveFileShouldGenerateUniqueFilenamesForSameName` | Dos uploads del mismo nombre original producen nombres distintos (UUID diferente) |
+| `saveFileShouldHandleFileWithNoOriginalName` | `originalFilename = null` no lanza `NullPointerException` |
+
+```java
+@Test
+void saveFileShouldPersistFileToStorage() throws IOException {
+    MockMultipartFile file = new MockMultipartFile(
+        "file", "cert.pdf", "application/pdf", "cert-data".getBytes());
+
+    String filename = service.saveFile(file);
+
+    Path savedPath = tempDir.resolve(filename);
+    assertThat(Files.exists(savedPath)).isTrue();
+    assertThat(Files.readAllBytes(savedPath)).isEqualTo("cert-data".getBytes());
+}
+```
+
+**Por qué es relevante**: garantiza que los certificados médicos subidos no se corrompen en el almacenamiento y que no hay colisiones de nombres entre usuarios distintos.
 
 ---
 
@@ -314,11 +452,161 @@ class GatewayValidationIntegrationTest {
 
 ---
 
-## 3. Pruebas E2E
+### 2.6 AnalyticsControllerIntegrationTest
 
-Las pruebas E2E validan flujos completos de usuario contra el entorno dev desplegado en Kubernetes. Se implementan como un script Bash que usa `curl`, sin dependencias adicionales.
+**Archivo**: `services/circleguard-dashboard-service/src/test/java/com/circleguard/dashboard/integration/AnalyticsControllerIntegrationTest.java`
 
-### 3.1 Script: `e2e/run_e2e.sh`
+**Flujo validado**: `AnalyticsController` → `AnalyticsService` → `KAnonymityFilter` (real) → `PromotionClient` (mock)
+
+**Infraestructura**: `@SpringBootTest` + `@AutoConfigureMockMvc` + `@MockBean PromotionClient` + `@MockBean JdbcTemplate`
+
+| Test | Comportamiento validado |
+|---|---|
+| `summaryEndpointShouldReturnPromotionStats` | `GET /api/v1/analytics/summary` → HTTP 200 con stats del PromotionClient |
+| `healthBoardEndpointShouldReturnGlobalStats` | `GET /api/v1/analytics/health-board` → HTTP 200 con campo `campusStatus` |
+| `departmentEndpointShouldApplyKAnonymityMasking` | Departamento con `totalUsers=3` → respuesta contiene `totalUsers: "<5"` y nota de privacidad |
+| `departmentEndpointShouldExposeCountsWhenPopulationSufficient` | `totalUsers=200`, `suspectCount=8` (>= K) visible; `confirmedCount=2` (< K) enmascarado a `"<5"` |
+| `timeSeriesEndpointShouldReturnDataPoints` | `GET /api/v1/analytics/time-series` → HTTP 200, body es un array |
+
+```java
+@Test
+void departmentEndpointShouldApplyKAnonymityMasking() throws Exception {
+    Map<String, Object> raw = new LinkedHashMap<>();
+    raw.put("totalUsers", 3L);
+    raw.put("suspectCount", 1L);
+    raw.put("department", "TestDept");
+
+    when(promotionClient.getHealthStatsByDepartment("TestDept")).thenReturn(raw);
+
+    mockMvc.perform(get("/api/v1/analytics/department/TestDept"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.totalUsers").value("<5"))
+        .andExpect(jsonPath("$.note").value("Insufficient data for privacy"));
+}
+```
+
+**Relevancia**: es el único test que verifica el pipeline completo HTTP → k-anonimidad → respuesta JSON, garantizando que la privacidad se aplica en producción y no solo en tests unitarios del filtro.
+
+---
+
+### 2.7 FileUploadIntegrationTest
+
+**Archivo**: `services/circleguard-file-service/src/test/java/com/circleguard/file/integration/FileUploadIntegrationTest.java`
+
+**Flujo validado**: `FileUploadController` → `FileStorageService` → filesystem real
+
+**Infraestructura**: `@SpringBootTest` + `@AutoConfigureMockMvc` (sin mocks — contexto completo)
+
+| Test | Comportamiento validado |
+|---|---|
+| `uploadEndpointShouldReturn200WithFilenameForValidPdf` | Upload de PDF → HTTP 200, `filename` no vacío, con sufijo `_health-cert.pdf` |
+| `uploadEndpointShouldAcceptImageFiles` | Upload de PNG → HTTP 200, filename generado |
+| `uploadEndpointShouldReturn400WhenNoFileProvided` | Sin parámetro `file` → HTTP 4xx |
+
+**Relevancia**: verifica que el endpoint multipart funciona end-to-end, incluyendo la creación del directorio `uploads/` y la escritura real al disco dentro del contexto de Spring Boot.
+
+---
+
+## 3. Pruebas Unitarias (mobile)
+
+Las pruebas de la aplicación React Native (Expo) validan la lógica de los hooks, contextos y utilidades sin lanzar la app. Siguen el patrón de `renderHook` + `act` de Testing Library y mockean las dependencias nativas de Expo.
+
+### 3.1 useQrToken.test.ts
+
+**Archivo**: `mobile/hooks/useQrToken.test.ts`
+
+**Hook bajo prueba**: `useQrToken` — genera un token QR rotativo de 60 segundos para acceso al campus.
+
+| Test | Comportamiento validado |
+|---|---|
+| `should initialize with a token and 60s timer when anonymousId is present` | Token no nulo + timer en 60 al montar |
+| `should not initialize if anonymousId is null` | Sin `anonymousId` → token nulo |
+| `should decrement timer every second` | `advanceTimersByTime(1000)` → `timeLeft` pasa de 60 a 59 |
+| `should rotate token and reset timer when it reaches 0` | En t=60s → token nuevo distinto al inicial, timer reinicia a 60 |
+
+---
+
+### 3.2 DynamicForm.test.tsx
+
+**Archivo**: `mobile/components/__tests__/DynamicForm.test.tsx`
+
+**Componente bajo prueba**: `DynamicForm` — formulario de síntomas renderizado dinámicamente desde el form-service.
+
+| Test | Comportamiento validado |
+|---|---|
+| `renders questions` | El componente renderiza todas las preguntas recibidas como props |
+| `updates text response` | `fireEvent.changeText` sobre un campo → el estado del formulario se actualiza |
+
+---
+
+### 3.3 AuthContext.test.tsx
+
+**Archivo**: `mobile/context/__tests__/AuthContext.test.tsx`
+
+**Contexto bajo prueba**: `AuthProvider` / `useAuth` — gestión global del estado de autenticación (anonymousId + JWT), respaldado por `expo-secure-store`.
+
+| Test | Comportamiento validado |
+|---|---|
+| `should start with null anonymousId and token while loading` | `isLoading=true` inmediatamente antes de que storage resuelva |
+| `should load anonymousId and token from storage on mount` | Dos llamadas a `SecureStore.getItemAsync` → popula `anonymousId` y `token` |
+| `should have null state when storage is empty` | Storage vacío → `anonymousId` y `token` nulos, `isLoading=false` |
+| `should save anonymousId and token to storage on enroll` | `enroll(id, jwt)` → llama a `SecureStore.setItemAsync` con las claves correctas |
+| `should clear storage and reset state on logout` | `logout()` → llama a `SecureStore.deleteItemAsync` para ambas claves, estado a null |
+| `useAuth should throw when used outside AuthProvider` | Sin `AuthProvider` en el árbol → lanza `'useAuth must be used within an AuthProvider'` |
+
+```tsx
+test('should save anonymousId and token to storage on enroll', async () => {
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await act(async () => {});
+
+    await act(async () => {
+        await result.current.enroll('new-anon-id', 'new-jwt');
+    });
+
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith('circleguard_anon_id', 'new-anon-id');
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith('circleguard_token', 'new-jwt');
+    expect(result.current.anonymousId).toBe('new-anon-id');
+});
+```
+
+**Por qué es relevante**: `AuthContext` es el punto central que decide si el usuario está autenticado. Un fallo aquí puede exponer rutas protegidas o borrar el anonymousId del usuario (perdiendo acceso al campus).
+
+---
+
+### 3.4 storage.test.ts
+
+**Archivo**: `mobile/utils/__tests__/storage.test.ts`
+
+**Utilidad bajo prueba**: `storage` — capa de abstracción que usa `expo-secure-store` en nativo e `localStorage` en web, garantizando que las credenciales se almacenan de forma segura en ambas plataformas.
+
+| Test | Comportamiento validado |
+|---|---|
+| `getItem should call SecureStore.getItemAsync` | En nativo, `getItem` delega a `SecureStore` |
+| `setItem should call SecureStore.setItemAsync` | En nativo, `setItem` delega a `SecureStore` |
+| `deleteItem should call SecureStore.deleteItemAsync` | En nativo, `deleteItem` delega a `SecureStore` |
+| `getItem should return null when key does not exist` | `SecureStore` retorna `null` → `storage.getItem` retorna `null` |
+| `setItem and getItem should work via localStorage on web` | En web, usa `localStorage` directamente |
+| `deleteItem should remove key from localStorage` | En web, `removeItem` limpia la clave correctamente |
+
+**Por qué es relevante**: si `storage` llama a la API incorrecta según la plataforma, las credenciales podrían no persistir entre sesiones (nativo) o almacenarse de forma insegura (web sin SecureStore).
+
+### Ejecución local (mobile)
+
+```bash
+cd mobile
+npm test                 # interactivo (watch mode)
+npm run test:ci          # headless con cobertura + JUnit XML para Jenkins
+# → mobile/coverage/lcov-report/index.html
+# → mobile/junit.xml
+```
+
+---
+
+## 4. Pruebas E2E
+
+Las pruebas E2E validan flujos completos de usuario contra el entorno desplegado en Kubernetes. Se implementan como un script Bash que usa `curl`, sin dependencias adicionales.
+
+### 4.1 Script: `e2e/run_e2e.sh`
 
 ```bash
 #!/bin/bash
@@ -329,19 +617,23 @@ Las pruebas E2E validan flujos completos de usuario contra el entorno dev desple
 #   TEST_QR_TOKEN  → QR token válido para validación en portería
 ```
 
-### 3.2 Descripción de los 5 flujos
+### 4.2 Descripción de los 7 flujos
 
 | Flujo | Servicio | Endpoint | Validación |
 |---|---|---|---|
-| **1 - Health Check** | Los 6 servicios | `GET /actuator/health` (×6) | HTTP 200; falla si alguno devuelve 000 o 5xx |
-| **2 - Listado de formularios** | form-service (31086) | `GET /api/v1/questionnaires` | HTTP 200, 401 o 403 aceptados (servicio activo) |
-| **3 - Analytics del dashboard** | dashboard-service (31084) | `GET /api/v1/analytics/summary` | HTTP 200, 401 o 403 aceptados |
-| **4 - Validación de QR** | gateway-service (31087) | `POST /api/v1/gate/validate` | Campo `status` = `"GREEN"` o `"RED"` (no 5xx) |
-| **5 - Estado de salud** | promotion-service (31088) | `GET /api/v1/health/status/{id}` | HTTP 200, 401, 403 o 404 aceptados |
+| **1 - Health Check** | Los 8 servicios | endpoints raíz de cada servicio | No 000 ni 5xx en ninguno |
+| **2 - Listado de formularios** | form-service (31086/30086) | `GET /api/v1/questionnaires` | HTTP 200, 401 o 403 aceptados |
+| **3 - Analytics del dashboard** | dashboard-service (31084/30084) | `GET /api/v1/analytics/summary` | HTTP 200, 401 o 403 aceptados |
+| **4 - Validación de QR** | gateway-service (31087/30087) | `POST /api/v1/gate/validate` | Campo `status="GREEN"` en respuesta JSON |
+| **5 - Estado de salud** | promotion-service (31088/30088) | `GET /api/v1/health/status/{id}` | HTTP 200, 401, 403 o 404 aceptados |
+| **6 - Permisos de usuario** | auth-service (31180/30180) | `GET /api/v1/users/permissions/NOTIFY_PRIORITY_ALERTS` | HTTP 200, 401 o 403 aceptados |
+| **7 - Registro de visitante** | identity-service (31083/30083) | `POST /api/v1/identities/visitor` | HTTP 200, 401 o 403 aceptados |
 
-Los flujos 1 a 3 y 5 aceptan códigos 4xx como respuesta válida (el servicio respondió correctamente aunque requiera autenticación). Solo un código 000 (connection refused) o 5xx indica un fallo real.
+Los flujos aceptan códigos 4xx como respuesta válida (el servicio respondió correctamente aunque requiera autenticación). Solo `000` (connection refused) o `5xx` indican un fallo real.
 
-### 3.3 Configuración de credenciales en Jenkins
+> **Nota**: los puertos 31xxx son los NodePorts de dev; los 30xxx son de prod. En `Jenkinsfile.master` se pasan explícitamente como variables de entorno `E2E_PORT_*`.
+
+### 4.3 Configuración de credenciales en Jenkins
 
 Para el flujo 4 (validación QR), el script usa la variable `TEST_QR_TOKEN`. En Jenkins se configura mediante credenciales de tipo **Secret Text**:
 
@@ -356,7 +648,7 @@ Para el flujo 4 (validación QR), el script usa la variable `TEST_QR_TOKEN`. En 
 
 > **Nota**: el `TEST_QR_TOKEN` tiene expiración corta (5 minutos por defecto). Para el pipeline, regenerar el token antes de ejecutar el build o extender la expiración en la configuración del servicio de prueba.
 
-### 3.4 Ejecución local
+### 4.4 Ejecución local
 
 ```bash
 # Con entorno dev corriendo en Kubernetes local:
@@ -410,9 +702,9 @@ Veredicto  : PASS
 
 ---
 
-## 4. Pruebas de Rendimiento con Locust
+## 5. Pruebas de Rendimiento con Locust
 
-### 4.1 Descripción de los escenarios
+### 5.1 Descripción de los escenarios
 
 El archivo `locust/locustfile.py` define cuatro clases de usuario que simulan comportamientos reales del sistema:
 
@@ -425,7 +717,7 @@ El archivo `locust/locustfile.py` define cuatro clases de usuario que simulan co
 
 El **peso** (weight) determina la proporción de usuarios de cada tipo. `GatewayValidationUser` tiene el peso más alto porque la validación de acceso es la operación más frecuente del sistema (cada estudiante la ejecuta al ingresar al campus).
 
-### 4.2 Configuración: `locust/locust.conf`
+### 5.2 Configuración: `locust/locust.conf`
 
 ```ini
 host        = http://host.docker.internal:31087  # gateway (mayor carga)
@@ -438,7 +730,7 @@ csv         = /mnt/locust/locust-stats           # estadísticas CSV
 exit-code-on-error = 1
 ```
 
-### 4.3 Imagen Docker: `locust/Dockerfile`
+### 5.3 Imagen Docker: `locust/Dockerfile`
 
 Para ejecutar Locust en el pipeline Jenkins sin depender de volúmenes Docker (incompatibles con Docker Desktop en macOS), se creó una imagen efímera que empaqueta los archivos de prueba directamente:
 
@@ -465,7 +757,7 @@ El `chown -R locust:locust /mnt/locust` es necesario porque la instrucción `COP
 | `locust/locustfile.py` | Escenarios de carga (copiado a `/mnt/locust/`) |
 | `locust/locust.conf` | Configuración headless (copiado a `/mnt/locust/`) |
 
-### 4.4 Ejecución local
+### 5.4 Ejecución local
 
 ```bash
 # Instalar locust
@@ -482,7 +774,7 @@ locust -f locust/locustfile.py --config locust/locust.conf \
   --html locust-report.html
 ```
 
-### 4.5 Ejecución en Jenkins (via Docker)
+### 5.5 Ejecución en Jenkins (via Docker)
 
 Se usa `docker build` para empaquetar los archivos Locust en una imagen efímera antes de correrla. Esto evita el problema de Docker-in-Docker en macOS: los volúmenes con paths del contenedor Jenkins (`/var/jenkins_home/workspace/...`) no son accesibles desde Docker Desktop, por lo que un `docker run -v` montaría un directorio vacío. `docker build` envía los archivos como tar al daemon sin depender del filesystem del host.
 
@@ -511,42 +803,173 @@ El reporte HTML se archiva como artefacto del build de Jenkins.
 
 ---
 
-## 5. Actualización del Pipeline (Jenkinsfile.dev)
+## 6. Pruebas de Seguridad (OWASP ZAP)
 
-### 5.1 Stage Integration Tests - antes vs. después
+Las pruebas de seguridad ejecutan un escaneo **pasivo** (sin ataques activos) con OWASP ZAP contra los 8 microservicios desplegados. Se integran en el pipeline master post-deploy para validar el entorno de producción real.
 
-**Antes (Punto 2)**: todas las sub-etapas imprimían un mensaje de omisión.
+### 6.1 Script: `zap/run_zap.sh`
 
-**Después (Punto 3)**: los servicios con tests de integración no-Testcontainers los ejecutan realmente.
+```bash
+# Variables de entorno:
+#   ZAP_HOST       → host donde los NodePorts 300XX son accesibles (default: host.docker.internal)
+#   ZAP_FAIL_ON    → nivel que bloquea el pipeline: High (default), Medium, Low
+#   ZAP_TIMEOUT    → timeout en segundos por servicio (default: 120)
+```
+
+El script itera sobre los 8 servicios, verifica que cada uno responde (skip si está caído), y lanza `zap-baseline.py` en Docker generando reportes HTML y JSON en `zap/reports/`.
+
+### 6.2 Servicios escaneados
+
+| Servicio | Puerto prod | Reporte generado |
+|---|---|---|
+| notification-service | 30082 | `zap/reports/zap-notification-service.html` |
+| identity-service | 30083 | `zap/reports/zap-identity-service.html` |
+| dashboard-service | 30084 | `zap/reports/zap-dashboard-service.html` |
+| file-service | 30085 | `zap/reports/zap-file-service.html` |
+| form-service | 30086 | `zap/reports/zap-form-service.html` |
+| gateway-service | 30087 | `zap/reports/zap-gateway-service.html` |
+| promotion-service | 30088 | `zap/reports/zap-promotion-service.html` |
+| auth-service | 30180 | `zap/reports/zap-auth-service.html` |
+
+### 6.3 Reglas de supresión: `zap/rules.tsv`
+
+CircleGuard es una API REST sin UI web, lo que genera falsos positivos estructurales en ZAP. El archivo `zap/rules.tsv` los suprime con justificación explícita:
+
+| Regla suprimida | Justificación |
+|---|---|
+| Content Security Policy (10038) | No aplica a APIs REST sin frontend |
+| Cookie flags (10012, 10011, 10054) | La API usa JWT Bearer, no cookies de sesión |
+| CORS abierto (10098) | Intencional — app móvil Expo consume la API |
+| Swagger UI recursos (90003) | Falso positivo de SubResource Integrity |
+
+Las reglas de inyección real (SQL, XSS, XSLT) están marcadas como `FAIL` — bloquean el pipeline si ZAP las detecta.
+
+### 6.4 Interpretación de resultados
+
+| Exit code ZAP | Significado | Acción |
+|---|---|---|
+| 0 | Sin alertas del nivel configurado | ✅ Ninguna |
+| 1 | Alertas menores (por debajo de High) | ⚠️ Revisar reporte, no bloquea |
+| 2 | Alertas High o Critical encontradas | ❌ Corregir código o justificar en `rules.tsv` |
+
+### 6.5 Ejecución local
+
+```bash
+# Requiere servicios accesibles en host.docker.internal:300XX
+bash zap/run_zap.sh
+
+# Cambiar host o nivel de fallo:
+ZAP_HOST=localhost ZAP_FAIL_ON=Medium bash zap/run_zap.sh
+```
+
+Los reportes se generan en `zap/reports/zap-<servicio>.html`.
+
+---
+
+## 7. Actualización del Pipeline (Jenkinsfiles)
+
+### 7.1 Stage Integration Tests - antes vs. después
+
+**Antes**: `integration:file-service` e `integration:dashboard-service` imprimían `echo 'omitida'`.
+
+**Después**: ambos ejecutan los tests de integración reales.
 
 | Sub-etapa | Antes | Después |
 |---|---|---|
-| `integration:file-service` | `echo 'omitida'` | `echo 'omitida'` (sin tests) |
+| `integration:file-service` | `echo 'omitida'` | `gradle test --tests "*.file.integration.*"` |
 | `integration:gateway-service` | `echo 'omitida'` | `gradle test --tests "*.gateway.integration.*"` |
-| `integration:dashboard-service` | `echo 'omitida'` | `echo 'omitida'` (sin tests) |
+| `integration:dashboard-service` | `echo 'omitida'` | `gradle test --tests "*.dashboard.integration.*"` |
 | `integration:form-service` | `echo 'omitida'` | `gradle test --tests "*.form.integration.*"` |
 | `integration:notification-service` | `echo 'omitida'` | `gradle test --tests "*.notification.integration.*"` |
 | `integration:promotion-service` | `echo 'omitida'` | `echo 'omitida'` (Testcontainers Neo4j - limitación macOS) |
 | `integration:identity-service` | *(no existía)* | `gradle test --tests "*.identity.integration.*"` |
 
-### 5.2 Stage E2E Tests - implementación
+### 7.2 Nuevos stages añadidos (todos los Jenkinsfiles)
+
+#### Mobile Tests
 
 ```groovy
-stage('E2E Tests') {
+stage('Mobile Tests') {
     steps {
-        sh 'chmod +x e2e/run_e2e.sh'
-        withCredentials([
-            string(credentialsId: 'e2e-jwt-token',  variable: 'TEST_JWT'),
-            string(credentialsId: 'e2e-anon-id',    variable: 'TEST_ANON_ID'),
-            string(credentialsId: 'e2e-qr-token',   variable: 'TEST_QR_TOKEN')
-        ]) {
-            sh 'bash e2e/run_e2e.sh'
+        sh '''
+            cd mobile
+            npm ci --prefer-offline || npm install
+            npm run test:ci
+        '''
+    }
+    post {
+        always {
+            junit allowEmptyResults: true, testResults: 'mobile/junit.xml'
+            archiveArtifacts artifacts: 'mobile/coverage/**', allowEmptyArchive: true
         }
     }
 }
 ```
 
-### 5.3 Stage Performance Tests - implementación
+#### Coverage Reports
+
+```groovy
+stage('Coverage Reports') {
+    steps {
+        sh './gradlew jacocoTestReport --no-daemon || true'
+    }
+    post {
+        always {
+            recordCoverage(
+                tools: [[parser: 'JACOCO',
+                         pattern: 'services/*/build/reports/jacoco/test/jacocoTestReport.xml']],
+                sourceCodeRetention: 'EVERY_BUILD'
+            )
+            archiveArtifacts artifacts: 'services/*/build/reports/jacoco/**/*.html',
+                             allowEmptyArchive: true
+        }
+    }
+}
+```
+
+> Requiere el **Jenkins Coverage Plugin** instalado. El `jacocoTestReport` se finaliza automáticamente con cada `test` task (configurado en `build.gradle.kts`), pero este stage lo archiva explícitamente para la interfaz de Jenkins.
+
+#### Security Tests (OWASP ZAP) — solo `Jenkinsfile.master`
+
+```groovy
+stage('Security Tests (OWASP ZAP)') {
+    steps {
+        sh 'chmod +x zap/run_zap.sh'
+        sh '''
+            ZAP_HOST=host.docker.internal \
+            ZAP_FAIL_ON=High \
+            ZAP_TIMEOUT=120 \
+            bash zap/run_zap.sh
+        '''
+    }
+    post {
+        always {
+            archiveArtifacts artifacts: 'zap/reports/*.html,zap/reports/*.json',
+                             allowEmptyArchive: true
+        }
+    }
+}
+```
+
+### 7.3 Stage E2E Tests - fix bug puertos prod (solo `Jenkinsfile.master`)
+
+Los puertos `E2E_PORT_AUTH` y `E2E_PORT_IDENTITY` no estaban siendo pasados explícitamente, haciendo que los flujos 6 y 7 pegaran a los puertos default del dev (31180/31083) en vez de prod (30180/30083).
+
+```groovy
+sh '''
+    E2E_PORT_NOTIFICATION=30082 \
+    E2E_PORT_IDENTITY=30083 \     ← agregado
+    E2E_PORT_DASHBOARD=30084 \
+    E2E_PORT_FILE=30085 \
+    E2E_PORT_FORM=30086 \
+    E2E_PORT_GATEWAY=30087 \
+    E2E_PORT_PROMOTION=30088 \
+    E2E_PORT_AUTH=30180 \         ← agregado
+    bash e2e/run_e2e.sh
+'''
+```
+
+### 7.4 Stage Performance Tests - sin cambios
 
 ```groovy
 stage('Performance Tests') {
@@ -579,9 +1002,9 @@ La bandera `|| true` evita que el pipeline falle si Locust detecta una tasa de e
 
 ---
 
-## 6. Análisis de Resultados
+## 8. Análisis de Resultados
 
-### 6.1 Pruebas unitarias e integración
+### 8.1 Pruebas unitarias e integración
 
 Los tests unitarios e de integración deben ejecutarse antes de cada build. Los resultados se publican en Jenkins como informes JUnit. Umbrales esperados:
 
@@ -591,7 +1014,7 @@ Los tests unitarios e de integración deben ejecutarse antes de cada build. Los 
 | Integración (no-TC) | 100% pass | Cualquier fallo bloquea el pipeline |
 | Integración (Testcontainers) | Local: 100% pass | En macOS CI: omitidos (ver sección 2) |
 
-### 6.2 Pruebas E2E
+### 8.2 Pruebas E2E
 
 #### Resultado del run de referencia (2026-05-06)
 
@@ -632,7 +1055,7 @@ El Flujo 1 usa `check_alive`, que acepta cualquier respuesta HTTP distinta de `0
 | Validación QR | Campo `status="GREEN"` en la respuesta JSON | `status="RED"` o `valid:false` indica token expirado o blacklistado |
 | Estado de salud | HTTP 200/401/403/404 | `5xx` indica error en Neo4j o Redis |
 
-### 6.3 Pruebas de rendimiento (Locust)
+### 8.3 Pruebas de rendimiento (Locust)
 
 #### Resultado del run de referencia (2026-05-06, 50 usuarios, 60 s)
 
@@ -724,20 +1147,30 @@ El reporte generado en `locust/locust-report.html` incluye:
 
 ---
 
-## 7. Cómo ejecutar todas las pruebas localmente
+## 9. Cómo ejecutar todas las pruebas localmente
 
 ```bash
-# 1. Pruebas unitarias (rápidas, sin Docker)
-./gradlew :services:circleguard-promotion-service:test \
-    --tests "com.circleguard.promotion.task.GraphCleanupTaskTest" \
-    --tests "com.circleguard.promotion.service.LocationResolutionServiceTest" \
-    --no-daemon
+# 1. Pruebas unitarias backend (rápidas, sin Docker)
+./gradlew test --no-daemon                         # todos los servicios
+./gradlew :services:circleguard-dashboard-service:test --no-daemon
+./gradlew :services:circleguard-file-service:test --no-daemon
 
-./gradlew :services:circleguard-auth-service:test --no-daemon
-./gradlew :services:circleguard-notification-service:test \
-    --tests "com.circleguard.notification.service.AuditLogServiceTest" --no-daemon
+# Reporte de cobertura JaCoCo (HTML por servicio)
+./gradlew jacocoTestReport --no-daemon
+# → services/<svc>/build/reports/jacoco/test/html/index.html
 
-# 2. Pruebas de integración (requieren Docker daemon activo)
+# 2. Pruebas unitarias mobile
+cd mobile && npm test           # interactivo
+cd mobile && npm run test:ci    # headless con coverage
+# → mobile/coverage/lcov-report/index.html
+
+# 3. Pruebas de integración backend (requieren Docker daemon activo)
+./gradlew :services:circleguard-dashboard-service:test \
+    --tests "com.circleguard.dashboard.integration.*" --no-daemon
+
+./gradlew :services:circleguard-file-service:test \
+    --tests "com.circleguard.file.integration.*" --no-daemon
+
 ./gradlew :services:circleguard-promotion-service:test \
     --tests "com.circleguard.promotion.integration.*" --no-daemon
 
@@ -753,14 +1186,18 @@ El reporte generado en `locust/locust-report.html` incluye:
 ./gradlew :services:circleguard-notification-service:test \
     --tests "com.circleguard.notification.integration.*" --no-daemon
 
-# 3. Pruebas E2E (requiere entorno dev desplegado en Kubernetes)
+# 4. Pruebas E2E (requiere entorno desplegado en Kubernetes)
 E2E_HOST=localhost TEST_JWT="..." TEST_ANON_ID="..." TEST_QR_TOKEN="..." \
     bash e2e/run_e2e.sh
 
-# 4. Locust (requiere entorno dev desplegado)
+# 5. Locust (requiere entorno desplegado)
 pip install locust
 locust -f locust/locustfile.py \
   --host http://localhost:31087 \
   --users 50 --spawn-rate 5 --run-time 60s \
   --headless --html locust-report.html
+
+# 6. OWASP ZAP (requiere servicios accesibles en NodePorts 300XX)
+bash zap/run_zap.sh
+# → zap/reports/zap-<servicio>.html por cada servicio
 ```

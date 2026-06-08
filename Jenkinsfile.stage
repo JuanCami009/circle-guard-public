@@ -202,7 +202,19 @@ pipeline {
             // En macOS con Docker Desktop el proxy de socket impide la detección de Testcontainers.
             parallel {
                 stage('integration:file-service') {
-                    steps { echo 'Sin tests de integración en file-service — etapa omitida.' }
+                    steps {
+                        sh '''
+                            ./gradlew :services:circleguard-file-service:test \
+                                --tests "com.circleguard.file.integration.*" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-file-service/build/test-results/test/*.xml'
+                        }
+                    }
                 }
                 stage('integration:gateway-service') {
                     steps {
@@ -220,7 +232,19 @@ pipeline {
                     }
                 }
                 stage('integration:dashboard-service') {
-                    steps { echo 'Sin tests de integración en dashboard-service — etapa omitida.' }
+                    steps {
+                        sh '''
+                            ./gradlew :services:circleguard-dashboard-service:test \
+                                --tests "com.circleguard.dashboard.integration.*" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-dashboard-service/build/test-results/test/*.xml'
+                        }
+                    }
                 }
                 stage('integration:form-service') {
                     steps {
@@ -289,6 +313,42 @@ pipeline {
                                   testResults: 'services/circleguard-identity-service/build/test-results/test/*.xml'
                         }
                     }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Mobile Tests') {
+            steps {
+                sh '''
+                    cd mobile
+                    npm ci --prefer-offline || npm install
+                    npm run test:ci
+                '''
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true,
+                          testResults: 'mobile/junit.xml'
+                    archiveArtifacts artifacts: 'mobile/coverage/**', allowEmptyArchive: true
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Coverage Reports') {
+            steps {
+                sh './gradlew jacocoTestReport --no-daemon || true'
+            }
+            post {
+                always {
+                    recordCoverage(
+                        tools: [[parser: 'JACOCO',
+                                 pattern: 'services/*/build/reports/jacoco/test/jacocoTestReport.xml']],
+                        sourceCodeRetention: 'EVERY_BUILD'
+                    )
+                    archiveArtifacts artifacts: 'services/*/build/reports/jacoco/**/*.html',
+                                     allowEmptyArchive: true
                 }
             }
         }

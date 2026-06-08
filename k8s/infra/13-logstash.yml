@@ -1,0 +1,96 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-pipeline
+  namespace: circleguard
+data:
+  circleguard.conf: |
+    input {
+      beats {
+        port => 5044
+      }
+    }
+
+    filter {
+      if [message] =~ /^\{/ {
+        json {
+          source  => "message"
+          target  => "parsed"
+        }
+        mutate {
+          rename => {
+            "[parsed][level]"       => "level"
+            "[parsed][message]"     => "log_message"
+            "[parsed][traceId]"     => "trace_id"
+            "[parsed][spanId]"      => "span_id"
+            "[parsed][logger_name]" => "logger"
+            "[parsed][thread_name]" => "thread"
+          }
+        }
+      }
+      mutate {
+        add_field => { "[@metadata][index]" => "circleguard-logs-%{+YYYY.MM.dd}" }
+      }
+    }
+
+    output {
+      elasticsearch {
+        hosts     => ["http://elasticsearch-svc:9200"]
+        index     => "%{[@metadata][index]}"
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logstash
+  namespace: circleguard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: logstash
+  template:
+    metadata:
+      labels:
+        app: logstash
+    spec:
+      containers:
+        - name: logstash
+          image: docker.elastic.co/logstash/logstash:8.13.4
+          ports:
+            - containerPort: 5044
+              name: beats
+          env:
+            - name: LS_JAVA_OPTS
+              value: "-Xmx512m -Xms512m"
+          volumeMounts:
+            - name: pipeline
+              mountPath: /usr/share/logstash/pipeline
+              readOnly: true
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+      volumes:
+        - name: pipeline
+          configMap:
+            name: logstash-pipeline
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: logstash-svc
+  namespace: circleguard
+spec:
+  type: ClusterIP
+  selector:
+    app: logstash
+  ports:
+    - name: beats
+      port: 5044
+      targetPort: 5044

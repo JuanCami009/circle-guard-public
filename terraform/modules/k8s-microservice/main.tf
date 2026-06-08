@@ -48,14 +48,39 @@ resource "kubernetes_deployment_v1" "this" {
             container_port = var.container_port
           }
 
-          readiness_probe {
-            tcp_socket {
-              # kubernetes provider v2 requires port as a string here
+          # ── Health probes via Spring Actuator (Punto 7) ───────────────────
+          # startup_probe gives extra time for slow init (e.g. Neo4j schema) before
+          # liveness kicks in.  failure_threshold * period = 150s max startup.
+          startup_probe {
+            http_get {
+              path = "/actuator/health/liveness"
               port = tostring(var.container_port)
             }
             initial_delay_seconds = 20
             period_seconds        = 5
-            failure_threshold     = 12
+            failure_threshold     = 30
+          }
+
+          liveness_probe {
+            http_get {
+              path = "/actuator/health/liveness"
+              port = tostring(var.container_port)
+            }
+            initial_delay_seconds = 0
+            period_seconds        = 10
+            failure_threshold     = 3
+            timeout_seconds       = 5
+          }
+
+          readiness_probe {
+            http_get {
+              path = "/actuator/health/readiness"
+              port = tostring(var.container_port)
+            }
+            initial_delay_seconds = 0
+            period_seconds        = 5
+            failure_threshold     = 6
+            timeout_seconds       = 3
           }
 
           # envFrom: ConfigMap (optional)

@@ -19,12 +19,28 @@ spec:
           imagePullPolicy: Never
           ports:
             - containerPort: 8086
-          readinessProbe:
-            tcpSocket:
+          # ── Health probes via Spring Actuator (Punto 7) ──────────────────
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
               port: 8086
             initialDelaySeconds: 20
             periodSeconds: 5
-            failureThreshold: 12
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8086
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8086
+            periodSeconds: 5
+            failureThreshold: 6
+            timeoutSeconds: 3
           envFrom:
             - configMapRef:
                 name: circleguard-config

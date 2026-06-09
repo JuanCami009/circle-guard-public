@@ -472,6 +472,46 @@ pipeline {
         }
 
         // ─────────────────────────────────────────────────────────────────
+        stage('Trivy IaC Scan') {
+            // Seguridad (Punto 8): escaneo de misconfiguraciones en manifests K8s y
+            // módulos Terraform. Usa modo "config" de Trivy (IaC/misconfig).
+            // TRIVY_EXIT_CODE=0 en dev → genera reportes sin bloquear el pipeline.
+            steps {
+                sh '''
+                    mkdir -p trivy-reports
+                    echo "Escaneando manifests k8s/ con Trivy config..."
+                    docker run --rm \
+                        -v "$PWD":/src \
+                        -v "$PWD/trivy-reports":/out \
+                        aquasec/trivy:latest config \
+                        --severity HIGH,CRITICAL \
+                        --exit-code ${TRIVY_EXIT_CODE} \
+                        --format template \
+                        --template "@contrib/html.tpl" \
+                        -o /out/trivy-iac-k8s.html \
+                        /src/k8s || true
+                    echo "Escaneando terraform/ con Trivy config..."
+                    docker run --rm \
+                        -v "$PWD":/src \
+                        -v "$PWD/trivy-reports":/out \
+                        aquasec/trivy:latest config \
+                        --severity HIGH,CRITICAL \
+                        --exit-code ${TRIVY_EXIT_CODE} \
+                        --format template \
+                        --template "@contrib/html.tpl" \
+                        -o /out/trivy-iac-terraform.html \
+                        /src/terraform || true
+                    echo "Trivy IaC scan completado (reportes en trivy-reports/)."
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'trivy-reports/trivy-iac-*.html', allowEmptyArchive: true
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
         stage('Bootstrap Backend') {
             steps {
                 sh 'bash terraform/scripts/bootstrap-backend.sh'

@@ -106,3 +106,17 @@ variable "volumes" {
   }))
   default = []
 }
+
+# ── Seguridad (Punto 8) ───────────────────────────────────────────────────────
+
+variable "service_account_name" {
+  description = "Name of the ServiceAccount to run the pod as (null = k8s default SA)"
+  type        = string
+  default     = null
+}
+
+variable "automount_service_account_token" {
+  description = "Whether to automount the ServiceAccount API token into the pod (false = least privilege)"
+  type        = bool
+  default     = false
+}

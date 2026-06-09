@@ -39,3 +39,9 @@ output "alertmanager_url" {
   description = "Alertmanager UI — alertas activas"
   value       = module.alertmanager.ui_url
 }
+
+# ── Seguridad (Punto 8) ───────────────────────────────────────────────────────
+output "gateway_https_url" {
+  description = "Gateway HTTPS vía ingress-nginx (añadir '127.0.0.1 circleguard.local' a /etc/hosts)"
+  value       = module.ingress.https_url
+}

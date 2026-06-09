@@ -35,5 +35,8 @@ resource "kubernetes_secret_v1" "circleguard_secrets" {
     VAULT_SALT                           = local.s["vault"].salt
     VAULT_HASH_SALT                      = local.s["vault"].hash_salt
     LDAP_ADMIN_PASSWORD                  = local.s["ldap"].admin_password
+    # ── Seguridad (Punto 8): SPRING_LDAP_PASSWORD en el Secret para que ──
+    # auth-service lo reciba via envFrom y no necesite el valor inline.
+    SPRING_LDAP_PASSWORD                 = local.s["ldap"].admin_password
   }
 }

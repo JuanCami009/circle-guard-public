@@ -16,6 +16,38 @@ y el versionado sigue [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- Seguridad completa (Punto 8 Proyecto Final):
+  - RBAC: ServiceAccounts dedicadas por microservicio (`automountServiceAccountToken: false`).
+  - RBAC: Roles namespaced `circleguard-developer` (read-only) y `circleguard-ci-deployer` (deploy).
+  - Módulo Terraform `k8s-rbac/` y manifest estático `k8s/infra/18-rbac.yml`.
+  - TLS: ingress-nginx vía Helm + certificado self-signed (`hashicorp/tls`) + Ingress HTTPS.
+  - Módulo Terraform `k8s-ingress/` y manifest estático `k8s/infra/19-ingress.yml`.
+  - Trivy IaC Scan (stage nuevo en los 3 Jenkinsfiles): misconfig sobre `k8s/` y `terraform/`.
+  - `Jenkinsfile.security`: pipeline cron diario (H 2 * * *) — Trivy image + IaC + notificación email.
+  - `SPRING_LDAP_PASSWORD` añadida al `circleguard-secrets` K8s Secret y módulo `k8s-config`.
+
+### Changed
+
+- `terraform/envs/{dev,stage,prod}/main.tf`: eliminados secretos inline de auth/identity (`SPRING_LDAP_PASSWORD`, `VAULT_SECRET/SALT/HASH_SALT`), ahora vienen del Secret vía `envFrom`.
+- `k8s/services/15-auth-service.yml`: añade SA + elimina `SPRING_LDAP_PASSWORD` inline.
+- `k8s/services/16-identity-service.yml`: añade SA + elimina `VAULT_*` inline.
+- `terraform/modules/k8s-microservice/`: nuevas variables `service_account_name` y `automount_service_account_token`.
+- `terraform/envs/{dev,stage,prod}/providers.tf`: añade provider `hashicorp/tls ~>4`.
+
+---
+
+## [0.7.0] — 2026-06-08
+
+### Added
+
+- Observabilidad completa (Punto 7 Proyecto Final): Prometheus + Grafana + ELK + Zipkin + health probes + métricas de negocio.
+
+---
+
+## [Unreleased — pre-0.7.0]
+
+### Added
+
 - Proceso formal de Change Management (marco ITIL ligero, tipos Standard/Normal/Emergency).
 - Planes de rollback documentados con tabla de escenarios y comandos exactos.
 - Script `scripts/rollback.sh` para revertir deployments de Kubernetes.

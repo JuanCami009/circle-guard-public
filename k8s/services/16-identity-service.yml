@@ -13,6 +13,9 @@ spec:
       labels:
         app: identity-service
     spec:
+      # ── Seguridad (Punto 8): SA dedicada, token no automontado ───────────
+      serviceAccountName: identity-service-sa
+      automountServiceAccountToken: false
       initContainers:
         - name: wait-for-postgres
           image: busybox:1.36
@@ -56,12 +59,8 @@ spec:
               value: "8083"
             - name: SPRING_DATASOURCE_URL
               value: "jdbc:postgresql://postgres-svc:5432/circleguard_identity"
-            - name: VAULT_SECRET
-              value: "746573742d7365637265742d33322d63686172732d6c6f6e672d313233343536"
-            - name: VAULT_SALT
-              value: "deadbeef"
-            - name: VAULT_HASH_SALT
-              value: "12345678"
+            # VAULT_SECRET / VAULT_SALT / VAULT_HASH_SALT eliminados (Punto 8):
+            # se inyectan desde circleguard-secrets via envFrom
           resources:
             requests:
               memory: "256Mi"

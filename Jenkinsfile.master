@@ -681,6 +681,11 @@ pipeline {
             // Clasifica commits por tipo (Conventional Commits: feat, fix, docs, otros).
             // Crea un tag Git ligero en el commit actual para marcar el release.
             steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'github-credentials',
+                    usernameVariable: 'GIT_USER',
+                    passwordVariable: 'GIT_TOKEN'
+                )]) {
                 sh '''
                     # Versionado semántico automático: lee commits desde el último tag vX.Y.Z
                     # y calcula MAJOR/MINOR/PATCH según Conventional Commits (feat/fix/BREAKING).
@@ -797,7 +802,7 @@ pipeline {
                         echo "- [x] Trivy Scan (vulnerabilidades HIGH/CRITICAL)"
                         echo "- [x] Deploy Kubernetes namespace circleguard"
                         echo "- [x] Smoke Tests (8 servicios, NodePorts 300XX)"
-                        echo "- [x] E2E Tests (7 flujos, run_e2e.sh)"
+                        echo "- [x] E2E Tests (Karate journeys cross-service)"
                         echo "- [x] Performance Tests (Locust, 50 usuarios, 60s)"
                         echo "- [x] Security Tests (OWASP ZAP baseline, 8 servicios)"
                         echo ""
@@ -809,10 +814,16 @@ pipeline {
                     echo "Release Notes generadas: release-notes-${VERSION}.md"
                     cat release-notes-${VERSION}.md
 
-                    # Crear tag Git ligero para marcar el release en el historial
+                    # Crear y pushear tag Git para marcar el release en el historial
+                    git config user.email "jenkins@circleguard.edu"
+                    git config user.name "Jenkins CI"
                     git tag ${VERSION} || true
                     echo "Tag Git creado: ${VERSION}"
+                    REMOTE_URL=$(git remote get-url origin | sed "s|https://|https://${GIT_USER}:${GIT_TOKEN}@|")
+                    git push "${REMOTE_URL}" ${VERSION} || true
+                    echo "Tag Git pusheado al remoto: ${VERSION}"
                 '''
+                } // withCredentials
                 archiveArtifacts artifacts: 'release-notes-*.md', allowEmptyArchive: false
             }
         }

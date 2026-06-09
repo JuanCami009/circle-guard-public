@@ -90,6 +90,25 @@ resource "kubernetes_config_map_v1" "grafana_dashboard_business" {
   }
 }
 
+# ── ConfigMap: dashboard JSON — uno por microservicio ───────────────────────
+resource "kubernetes_config_map_v1" "grafana_dashboard_per_service" {
+  metadata {
+    name      = "grafana-dashboard-per-service"
+    namespace = var.namespace
+  }
+
+  data = {
+    "svc-auth.json"         = file("${path.module}/dashboards/services/svc-auth.json")
+    "svc-identity.json"     = file("${path.module}/dashboards/services/svc-identity.json")
+    "svc-gateway.json"      = file("${path.module}/dashboards/services/svc-gateway.json")
+    "svc-file.json"         = file("${path.module}/dashboards/services/svc-file.json")
+    "svc-dashboard.json"    = file("${path.module}/dashboards/services/svc-dashboard.json")
+    "svc-form.json"         = file("${path.module}/dashboards/services/svc-form.json")
+    "svc-promotion.json"    = file("${path.module}/dashboards/services/svc-promotion.json")
+    "svc-notification.json" = file("${path.module}/dashboards/services/svc-notification.json")
+  }
+}
+
 # ── Deployment ──────────────────────────────────────────────────────────────
 resource "kubernetes_deployment_v1" "grafana" {
   metadata {
@@ -157,6 +176,12 @@ resource "kubernetes_deployment_v1" "grafana" {
             read_only  = true
           }
 
+          volume_mount {
+            name       = "dashboard-per-service"
+            mount_path = "/var/lib/grafana/dashboards/services"
+            read_only  = true
+          }
+
           resources {
             requests = { memory = "256Mi", cpu = "100m" }
             limits   = { memory = "512Mi", cpu = "500m" }
@@ -188,6 +213,13 @@ resource "kubernetes_deployment_v1" "grafana" {
           name = "dashboard-business"
           config_map {
             name = kubernetes_config_map_v1.grafana_dashboard_business.metadata[0].name
+          }
+        }
+
+        volume {
+          name = "dashboard-per-service"
+          config_map {
+            name = kubernetes_config_map_v1.grafana_dashboard_per_service.metadata[0].name
           }
         }
       }

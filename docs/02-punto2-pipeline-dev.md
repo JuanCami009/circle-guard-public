@@ -387,17 +387,6 @@ Los smoke tests verifican que los 6 servicios están respondiendo después del d
    - `401 Unauthorized` - Spring Security activo, el servicio está corriendo
    - `000` - **FALLA**: connection refused, el servicio no está respondiendo
 
-**Smoke tests manuales desde el host** (fuera de Jenkins):
-
-```bash
-curl -s -o /dev/null -w "file-service:        %{http_code}\n" http://localhost:31085/
-curl -s -o /dev/null -w "gateway-service:     %{http_code}\n" http://localhost:31087/
-curl -s -o /dev/null -w "dashboard-service:   %{http_code}\n" http://localhost:31084/
-curl -s -o /dev/null -w "form-service:        %{http_code}\n" http://localhost:31086/
-curl -s -o /dev/null -w "notification-svc:    %{http_code}\n" http://localhost:31082/
-curl -s -o /dev/null -w "promotion-service:   %{http_code}\n" http://localhost:31088/
-```
-
 ### 3.9 E2E Tests y Performance Tests (placeholders)
 
 ```groovy

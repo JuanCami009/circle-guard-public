@@ -327,18 +327,7 @@ for port_svc in "32085:file-service" "32087:gateway-service" "32084:dashboard-se
 done
 ```
 
-La lógica de validación es idéntica al pipeline dev: cualquier respuesta HTTP (incluyendo 401, 403 o 404) confirma que el proceso Spring Boot inició correctamente y está atendiendo peticiones. Solo HTTP 000 (connection refused) indica un fallo real. Los puertos son los NodePorts 320XX del namespace stage.
-
-**Puertos de smoke tests por entorno:**
-
-| Servicio | Producción | Desarrollo | Stage |
-|---|---|---|---|
-| file-service | 30085 | 31085 | **32085** |
-| gateway-service | 30087 | 31087 | **32087** |
-| dashboard-service | 30084 | 31084 | **32084** |
-| form-service | 30086 | 31086 | **32086** |
-| notification-service | 30082 | 31082 | **32082** |
-| promotion-service | 30088 | 31088 | **32088** |
+La lógica de validación es idéntica al pipeline dev: cualquier respuesta HTTP (incluyendo 401, 403 o 404) confirma que el proceso Spring Boot inició correctamente y está atendiendo peticiones. Solo HTTP 000 (connection refused) indica un fallo real. Los puertos son los NodePorts 320XX del namespace stage (ver tabla de sección 1.1).
 
 ### 4.9 E2E Tests
 

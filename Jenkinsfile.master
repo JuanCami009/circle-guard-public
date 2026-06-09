@@ -797,7 +797,7 @@ pipeline {
                         echo "- [x] Trivy Scan (vulnerabilidades HIGH/CRITICAL)"
                         echo "- [x] Deploy Kubernetes namespace circleguard"
                         echo "- [x] Smoke Tests (8 servicios, NodePorts 300XX)"
-                        echo "- [x] E2E Tests (7 flujos, run_e2e.sh)"
+                        echo "- [x] E2E Tests (Karate journeys cross-service)"
                         echo "- [x] Performance Tests (Locust, 50 usuarios, 60s)"
                         echo "- [x] Security Tests (OWASP ZAP baseline, 8 servicios)"
                         echo ""

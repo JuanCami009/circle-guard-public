@@ -16,6 +16,9 @@ rootProject.name = "circleguard"
 // include("libs:circleguard-security")
 // include("libs:circleguard-events")
 
+// E2E Tests (Karate — journeys cross-service, requiere entorno desplegado)
+include("e2e-tests")
+
 // Microservices
 include("services:circleguard-auth-service")
 include("services:circleguard-identity-service")

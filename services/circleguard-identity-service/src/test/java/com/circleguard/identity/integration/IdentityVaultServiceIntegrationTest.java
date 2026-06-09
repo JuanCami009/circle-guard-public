@@ -3,6 +3,7 @@ package com.circleguard.identity.integration;
 import com.circleguard.identity.model.IdentityMapping;
 import com.circleguard.identity.repository.IdentityMappingRepository;
 import com.circleguard.identity.service.IdentityVaultService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -36,8 +37,10 @@ class IdentityVaultServiceIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        identityVaultService = new IdentityVaultService(repository);
+        identityVaultService = new IdentityVaultService(repository, new SimpleMeterRegistry());
         ReflectionTestUtils.setField(identityVaultService, "hashSalt", "12345678");
+        // @PostConstruct no corre con new() — invocar manualmente para inicializar las métricas
+        ReflectionTestUtils.invokeMethod(identityVaultService, "initMetrics");
     }
 
     @Test

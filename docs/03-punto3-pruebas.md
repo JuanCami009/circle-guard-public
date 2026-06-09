@@ -9,7 +9,7 @@ Este documento describe todas las pruebas implementadas en el proyecto. Se defin
 | Unitarias (backend) | 14 | promotion, auth, notification, dashboard, file | JUnit 5 + Mockito |
 | Integración (backend) | 10 | promotion, notification, gateway, form, identity, dashboard, file | JUnit 5 + Testcontainers / @SpringBootTest |
 | Unitarias (mobile) | 4 archivos | React Native / Expo | Jest + Testing Library |
-| E2E | 7 flujos | Los 8 servicios del entorno prod | Bash + curl |
+| E2E | 4 features (journeys cross-service) | Los 8 servicios del entorno desplegado | Karate DSL (JUnit 5) |
 | Rendimiento | 6 escenarios | promotion, form, gateway, dashboard, auth, identity | Locust |
 | Seguridad | 8 servicios | Todos los microservicios | OWASP ZAP Baseline |
 
@@ -85,8 +85,17 @@ mobile/
   context/__tests__/AuthContext.test.tsx                    # Unit (mobile)  ← nuevo
   utils/__tests__/storage.test.ts                           # Unit (mobile)  ← nuevo
 
-e2e/
-  run_e2e.sh                                                # E2E (7 flujos)
+e2e-tests/
+  build.gradle.kts                                          # módulo Karate (JUnit 5)
+  src/test/java/com/circleguard/e2e/E2eRunner.java          # runner JUnit5
+  src/test/resources/karate-config.js                       # configuración: host, puertos, auth
+  src/test/resources/e2e/
+    health.feature                                          # E2E humo: 8 servicios sin 5xx
+    journey-campus-access.feature                           # Journey A: sano → GREEN
+    journey-health-risk.feature                             # Journey B: fiebre → RED (Kafka async)
+    journey-visitor.feature                                 # Journey C: visitante → identity
+    helpers/login.feature                                   # helper @ignore: login → jwt+anonId
+    helpers/visitor-handoff.feature                         # helper @ignore: registro visitante
 
 locust/
   locustfile.py                                             # Rendimiento (6 perfiles)

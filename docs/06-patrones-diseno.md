@@ -1,4 +1,4 @@
-# Punto 3 - Patrones de Diseño
+# Punto 3: Patrones de Diseño (10%)
 
 ## 1. Patrones Existentes en la Arquitectura
 

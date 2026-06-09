@@ -504,7 +504,7 @@ void departmentEndpointShouldApplyKAnonymityMasking() throws Exception {
 
 **Flujo validado**: `FileUploadController` → `FileStorageService` → filesystem real
 
-**Infraestructura**: `@SpringBootTest` + `@AutoConfigureMockMvc` (sin mocks — contexto completo)
+**Infraestructura**: `@SpringBootTest` + `@AutoConfigureMockMvc` (sin mocks - contexto completo)
 
 | Test | Comportamiento validado |
 |---|---|
@@ -524,7 +524,7 @@ Las pruebas de la aplicación React Native (Expo) validan la lógica de los hook
 
 **Archivo**: `mobile/hooks/useQrToken.test.ts`
 
-**Hook bajo prueba**: `useQrToken` — genera un token QR rotativo de 60 segundos para acceso al campus.
+**Hook bajo prueba**: `useQrToken` - genera un token QR rotativo de 60 segundos para acceso al campus.
 
 | Test | Comportamiento validado |
 |---|---|
@@ -539,7 +539,7 @@ Las pruebas de la aplicación React Native (Expo) validan la lógica de los hook
 
 **Archivo**: `mobile/components/__tests__/DynamicForm.test.tsx`
 
-**Componente bajo prueba**: `DynamicForm` — formulario de síntomas renderizado dinámicamente desde el form-service.
+**Componente bajo prueba**: `DynamicForm` - formulario de síntomas renderizado dinámicamente desde el form-service.
 
 | Test | Comportamiento validado |
 |---|---|
@@ -552,7 +552,7 @@ Las pruebas de la aplicación React Native (Expo) validan la lógica de los hook
 
 **Archivo**: `mobile/context/__tests__/AuthContext.test.tsx`
 
-**Contexto bajo prueba**: `AuthProvider` / `useAuth` — gestión global del estado de autenticación (anonymousId + JWT), respaldado por `expo-secure-store`.
+**Contexto bajo prueba**: `AuthProvider` / `useAuth` - gestión global del estado de autenticación (anonymousId + JWT), respaldado por `expo-secure-store`.
 
 | Test | Comportamiento validado |
 |---|---|
@@ -586,7 +586,7 @@ test('should save anonymousId and token to storage on enroll', async () => {
 
 **Archivo**: `mobile/utils/__tests__/storage.test.ts`
 
-**Utilidad bajo prueba**: `storage` — capa de abstracción que usa `expo-secure-store` en nativo e `localStorage` en web, garantizando que las credenciales se almacenan de forma segura en ambas plataformas.
+**Utilidad bajo prueba**: `storage` - capa de abstracción que usa `expo-secure-store` en nativo e `localStorage` en web, garantizando que las credenciales se almacenan de forma segura en ambas plataformas.
 
 | Test | Comportamiento validado |
 |---|---|
@@ -672,16 +672,16 @@ Salida esperada:
 
 ```
 ============================================================
-Iniciando pruebas E2E — Host: localhost
+Iniciando pruebas E2E - Host: localhost
 ============================================================
 
 >>> FLUJO 1: Health Check de todos los servicios
-[PASS] notification-service (HTTP 404 — servicio vivo, 0s)
-[PASS] dashboard-service (HTTP 200 — servicio vivo, 0s)
-[PASS] file-service (HTTP 404 — servicio vivo, 0s)
-[PASS] form-service (HTTP 200 — servicio vivo, 0s)
-[PASS] gateway-service (HTTP 404 — servicio vivo, 0s)
-[PASS] promotion-service (HTTP 403 — servicio vivo, 0s)
+[PASS] notification-service (HTTP 404 - servicio vivo, 0s)
+[PASS] dashboard-service (HTTP 200 - servicio vivo, 0s)
+[PASS] file-service (HTTP 404 - servicio vivo, 0s)
+[PASS] form-service (HTTP 200 - servicio vivo, 0s)
+[PASS] gateway-service (HTTP 404 - servicio vivo, 0s)
+[PASS] promotion-service (HTTP 403 - servicio vivo, 0s)
 
 >>> FLUJO 2: Consulta de formularios activos (form-service)
 [PASS] form-service GET /api/v1/questionnaires (HTTP 200, 0s)
@@ -754,7 +754,7 @@ WORKDIR /mnt/locust
 
 **Por qué es necesario:**
 
-El pipeline Jenkins corre dentro de un contenedor Docker. Al intentar `docker run -v "$PWD/locust:/mnt/locust"`, el path `$PWD` es una ruta del filesystem del contenedor Jenkins (`/var/jenkins_home/workspace/...`), no del host macOS. Docker Desktop busca ese path en el host, no lo encuentra, y monta un directorio vacío — Locust no puede leer `locust.conf` ni `locustfile.py`.
+El pipeline Jenkins corre dentro de un contenedor Docker. Al intentar `docker run -v "$PWD/locust:/mnt/locust"`, el path `$PWD` es una ruta del filesystem del contenedor Jenkins (`/var/jenkins_home/workspace/...`), no del host macOS. Docker Desktop busca ese path en el host, no lo encuentra, y monta un directorio vacío - Locust no puede leer `locust.conf` ni `locustfile.py`.
 
 `docker build` resuelve esto porque envía los archivos como un **tar al daemon Docker** (no como path del host). Una vez construida la imagen, los archivos están embebidos y no se necesita ningún volumen.
 
@@ -848,18 +848,18 @@ CircleGuard es una API REST sin UI web, lo que genera falsos positivos estructur
 |---|---|
 | Content Security Policy (10038) | No aplica a APIs REST sin frontend |
 | Cookie flags (10012, 10011, 10054) | La API usa JWT Bearer, no cookies de sesión |
-| CORS abierto (10098) | Intencional — app móvil Expo consume la API |
+| CORS abierto (10098) | Intencional - app móvil Expo consume la API |
 | Swagger UI recursos (90003) | Falso positivo de SubResource Integrity |
 
-Las reglas de inyección real (SQL, XSS, XSLT) están marcadas como `FAIL` — bloquean el pipeline si ZAP las detecta.
+Las reglas de inyección real (SQL, XSS, XSLT) están marcadas como `FAIL` - bloquean el pipeline si ZAP las detecta.
 
 ### 6.4 Interpretación de resultados
 
 | Exit code ZAP | Significado | Acción |
 |---|---|---|
-| 0 | Sin alertas del nivel configurado | ✅ Ninguna |
-| 1 | Alertas menores (por debajo de High) | ⚠️ Revisar reporte, no bloquea |
-| 2 | Alertas High o Critical encontradas | ❌ Corregir código o justificar en `rules.tsv` |
+| 0 | Sin alertas del nivel configurado | Sin acción |
+| 1 | Alertas menores (por debajo de High) | Revisar reporte, no bloquea |
+| 2 | Alertas High o Critical encontradas | Corregir código o justificar en `rules.tsv` |
 
 ### 6.5 Ejecución local
 
@@ -938,7 +938,7 @@ stage('Coverage Reports') {
 
 > Requiere el **Jenkins Coverage Plugin** instalado. El `jacocoTestReport` se finaliza automáticamente con cada `test` task (configurado en `build.gradle.kts`), pero este stage lo archiva explícitamente para la interfaz de Jenkins.
 
-#### Security Tests (OWASP ZAP) — solo `Jenkinsfile.master`
+#### Security Tests (OWASP ZAP) - solo `Jenkinsfile.master`
 
 ```groovy
 stage('Security Tests (OWASP ZAP)') {
@@ -1084,13 +1084,13 @@ Veredicto SLA (p95<500ms, <1% 5xx) : REPROBADO
 
 | Endpoint | Req | Fallos | p50 | p95 | p99 | Estado |
 |---|---|---|---|---|---|---|
-| `POST /api/v1/gate/validate` | 1091 | 0 | 3 ms | 8 ms | 17 ms | ✅ OK |
-| `GET /api/v1/health/status/{id}` | 372 | 0 | 3 ms | 8 ms | 27 ms | ✅ OK |
-| `POST /api/v1/surveys` | 47 | 0 | 4 ms | 10 ms | 76 ms | ✅ OK |
-| `GET /api/v1/questionnaires` | 21 | 0 | 3 ms | 7 ms | 10 ms | ✅ OK |
-| `GET /api/v1/analytics/summary` | 12 | 0 | 3 ms | 11 ms | 11 ms | ✅ OK |
-| `GET /api/v1/analytics/heatmap` | 6 | 0 | 5 ms | 13 ms | 13 ms | ✅ OK |
-| `GET /actuator/health` | 60 | 60 | 3 ms | 9 ms | 19 ms | ⚠️ FALLO |
+| `POST /api/v1/gate/validate` | 1091 | 0 | 3 ms | 8 ms | 17 ms | OK |
+| `GET /api/v1/health/status/{id}` | 372 | 0 | 3 ms | 8 ms | 27 ms | OK |
+| `POST /api/v1/surveys` | 47 | 0 | 4 ms | 10 ms | 76 ms | OK |
+| `GET /api/v1/questionnaires` | 21 | 0 | 3 ms | 7 ms | 10 ms | OK |
+| `GET /api/v1/analytics/summary` | 12 | 0 | 3 ms | 11 ms | 11 ms | OK |
+| `GET /api/v1/analytics/heatmap` | 6 | 0 | 5 ms | 13 ms | 13 ms | OK |
+| `GET /actuator/health` | 60 | 60 | 3 ms | 9 ms | 19 ms | FALLO |
 
 #### Interpretación del veredicto "REPROBADO"
 
@@ -1099,7 +1099,7 @@ Los **60 fallos** provienen exclusivamente de `GET /actuator/health` en el puert
 **Todos los endpoints de negocio tienen 0 fallos y latencias por debajo de los umbrales.** El veredicto REPROBADO del SLA se debe únicamente al actuator, no a degradación de rendimiento.
 
 Opciones de resolución:
-1. **Eliminar el actuator check del escenario de carga** en `HealthStatusUser.get_health_actuator()` — los servicios ya se verifican como activos en el E2E (Flujo 1).
+1. **Eliminar el actuator check del escenario de carga** en `HealthStatusUser.get_health_actuator()` - los servicios ya se verifican como activos en el E2E (Flujo 1).
 2. **Habilitar el actuator en promotion-service** añadiendo `management.endpoints.web.exposure.include=health` a su `application.yml`.
 
 #### Análisis de rendimiento real: los endpoints de negocio
@@ -1108,11 +1108,11 @@ Con el actuator excluido del análisis, el rendimiento real del sistema es:
 
 | Métrica | Valor obtenido | Umbral aceptable | Evaluación |
 |---|---|---|---|
-| RPS sostenido | 28.8 req/s | > 20 RPS | ✅ Cumple |
-| Latencia p50 (global) | 3 ms | < 200 ms | ✅ Muy por debajo |
-| Latencia p95 (global) | 8 ms | < 500 ms | ✅ Muy por debajo |
-| Latencia p99 (global) | 17 ms | < 1000 ms | ✅ Cumple |
-| Fallos 5xx en negocio | 0 | < 1% | ✅ 0% |
+| RPS sostenido | 28.8 req/s | > 20 RPS | Cumple |
+| Latencia p50 (global) | 3 ms | < 200 ms | Muy por debajo |
+| Latencia p95 (global) | 8 ms | < 500 ms | Muy por debajo |
+| Latencia p99 (global) | 17 ms | < 1000 ms | Cumple |
+| Fallos 5xx en negocio | 0 | < 1% | 0% |
 
 #### Outlier observado: spike de 214 ms en gateway-service
 
@@ -1132,10 +1132,10 @@ El p99.9 de `POST /api/v1/gate/validate` llega a **210 ms** mientras el p95 es d
 
 | Endpoint | Por qué es crítico | Umbral p95 | Resultado |
 |---|---|---|---|
-| `POST /api/v1/gate/validate` | Ejecutado en cada acceso al campus; picos en horario de entrada | < 500 ms | **8 ms** ✅ |
-| `GET /api/v1/health/status/{id}` | Consumido por la app móvil continuamente en background | < 300 ms | **8 ms** ✅ |
-| `POST /api/v1/surveys` | Procesamiento en cascada Kafka → Neo4j | < 1000 ms | **10 ms** ✅ |
-| `GET /api/v1/analytics/summary` | Consulta agregada sobre múltiples nodos del grafo | < 2000 ms | **11 ms** ✅ |
+| `POST /api/v1/gate/validate` | Ejecutado en cada acceso al campus; picos en horario de entrada | < 500 ms | **8 ms** (cumple) |
+| `GET /api/v1/health/status/{id}` | Consumido por la app móvil continuamente en background | < 300 ms | **8 ms** (cumple) |
+| `POST /api/v1/surveys` | Procesamiento en cascada Kafka → Neo4j | < 1000 ms | **10 ms** (cumple) |
+| `GET /api/v1/analytics/summary` | Consulta agregada sobre múltiples nodos del grafo | < 2000 ms | **11 ms** (cumple) |
 
 #### Interpretación del reporte HTML
 

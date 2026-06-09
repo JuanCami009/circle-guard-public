@@ -1,4 +1,4 @@
-# Punto 2: Pipeline de Desarrollo (Dev Environment)
+# Punto 2: Pipeline de Desarrollo (Dev Environment) (15%)
 
 ## Resumen
 
@@ -8,16 +8,16 @@ El pipeline ejecuta las siguientes etapas para los 8 microservicios del proyecto
 
 | # | Etapa | Tipo | Servicios involucrados | Estrategia |
 |---|---|---|---|---|
-| 1 | Checkout | Secuencial | — | `checkout scm` + `chmod +x gradlew` |
-| 2 | Prepare | Secuencial | — | `./gradlew --version` para pre-descargar el wrapper |
+| 1 | Checkout | Secuencial | - | `checkout scm` + `chmod +x gradlew` |
+| 2 | Prepare | Secuencial | - | `./gradlew --version` para pre-descargar el wrapper |
 | 3 | Build JARs | Paralelo | 8 | `bootJar -x test --no-daemon` |
 | 4 | Unit Tests | Paralelo | 8 | `@WebMvcTest` / MockMvc / Mockito + JUnit XML |
 | 5 | Integration Tests | Paralelo | 8 | 6 servicios con tests reales (no-Testcontainers); `promotion-service` omitido por incompatibilidad Docker Desktop - ver sección 3.5 |
 | 6 | Docker Build `:dev` | Paralelo | 8 | `docker build` copiando JAR pre-compilado, tag `:dev` |
 | 7 | Deploy Dev | Secuencial | 8 + infra | `kubectl apply` con `sed` para namespace, imagen y NodePorts |
 | 8 | Smoke Tests | Secuencial | 8 | `curl` a `host.docker.internal` NodePorts 31082–31088, 31083, 31180 |
-| 9 | E2E Tests | Placeholder | — | Implementado en Punto 3 |
-| 10 | Performance Tests | Placeholder | — | Implementado en Punto 3 |
+| 9 | E2E Tests | Placeholder | - | Implementado en Punto 3 |
+| 10 | Performance Tests | Placeholder | - | Implementado en Punto 3 |
 
 ---
 
@@ -54,74 +54,33 @@ kubectl apply -f k8s/00-namespace-dev.yml
 kubectl get ns circleguard-dev
 ```
 
-![Namespace circleguard-dev creado en Kubernetes](../screenshots/kubectl-namespace-dev.png)
-
 ---
 
 ## 2. Configurar el Multibranch Pipeline en Jenkins
 
-### 2.1 ¿Qué es un Multibranch Pipeline?
-
-Un **Multibranch Pipeline** escanea automáticamente el repositorio Git y crea un sub-pipeline por cada branch que contenga el archivo `Jenkinsfile.dev`. Esto permite:
-
-- Builds **aislados por branch**: `master`, `dev`, `feature/*` tienen su propio Stage View e historial.
-- **Detección automática**: al crear un nuevo branch con el Jenkinsfile, Jenkins lo descubre en el próximo escaneo y crea el job sin intervención manual.
-- **Limpieza automática**: cuando se elimina un branch, Jenkins puede eliminar el sub-pipeline correspondiente (Orphaned Item Strategy).
-
-```
-circleguard-dev-pipeline/
-├── master    sub-pipeline para el branch master
-├── dev       sub-pipeline para el branch dev (si existe)
-└── feature/* sub-pipeline por cada feature branch
-```
-
-### 2.2 Crear el job en Jenkins
+### 2.1 Crear el job en Jenkins
 
 1. Abrir Jenkins en `http://localhost:8080`.
 2. Ir a **New Item**.
 3. Ingresar el nombre `circleguard-dev-pipeline`.
 4. Seleccionar **Multibranch Pipeline** y hacer clic en **OK**.
 
-![Selección de tipo Multibranch Pipeline en Jenkins](../screenshots/jenkins-new-item-multibranch.png)
+### 2.2 Configurar Branch Sources y Build Configuration
 
-### 2.3 Configurar Branch Sources
+En **Branch Sources**: Add source -> Git -> URL del repositorio. Discover branches: All branches.
 
-En la pestaña **Branch Sources**:
-
-1. Hacer clic en **Add source** → seleccionar **Git**.
-2. Completar los campos:
-
-| Campo | Valor |
-|---|---|
-| Project Repository | URL del repositorio |
-| Credentials | Ninguna para repo local; configurar credenciales si es remoto |
-
-1. En **Behaviours** → **Discover branches** → estrategia: **All branches**.
-
-![Configuración de Branch Sources en el Multibranch Pipeline](../screenshots/jenkins-multibranch-branch-sources.png)
-
-### 2.4 Configurar Build Configuration
-
-En la pestaña **Build Configuration**:
+En **Build Configuration**:
 
 | Campo | Valor |
 |---|---|
 | Mode | by Jenkinsfile |
 | Script Path | `Jenkinsfile.dev` |
 
-> **Nota:** El Script Path apunta a `Jenkinsfile.dev` (nombre personalizado) en lugar del `Jenkinsfile` convencional. Jenkins buscará este archivo en la raíz de cada branch al escanear.
+> **Nota:** El Script Path apunta a `Jenkinsfile.dev` en lugar del `Jenkinsfile` convencional. Jenkins buscará este archivo en la raíz de cada branch al escanear.
 
-![Configuración de Script Path en Build Configuration](../screenshots/jenkins-multibranch-script-path.png)
+### 2.3 Guardar y ejecutar el escaneo
 
-
-### 2.5 Guardar y ejecutar el escaneo
-
-1. Hacer clic en **Save**.
-2. Jenkins ejecuta automáticamente un **Branch Indexing** (escaneo del repositorio).
-3. Se crea un sub-pipeline por cada branch que contenga `Jenkinsfile.dev`.
-4. Para forzar un escaneo manual: **Scan Multibranch Pipeline Now**.
-
-![Branch Indexing completado — sub-pipelines descubiertos](../screenshots/jenkins-multibranch-branch-indexing.png)
+Hacer clic en **Save**. Jenkins ejecuta automáticamente un Branch Indexing y crea un sub-pipeline por cada branch que contenga `Jenkinsfile.dev`.
 
 ---
 
@@ -173,7 +132,7 @@ Los 6 servicios se compilan en paralelo. Los flags usados son:
 | Flag | Razón |
 |---|---|
 | `:services:<name>:bootJar` | Compila solo el JAR del servicio específico, sin compilar otros módulos innecesarios |
-| `-x test` | Omite las pruebas en esta etapa — se ejecutan en etapas dedicadas |
+| `-x test` | Omite las pruebas en esta etapa - se ejecutan en etapas dedicadas |
 | `--no-daemon` | Evita que el Gradle Daemon quede corriendo en segundo plano dentro del contenedor Jenkins |
 
 El contexto de build es la raíz del repositorio porque `settings.gradle.kts` y todos los módulos están ahí.
@@ -210,7 +169,7 @@ stage('Unit Tests') {
 }
 ```
 
-Para 5 de los 6 servicios (file, gateway, dashboard, form, notification), todos los tests existentes son pruebas unitarias que usan `@WebMvcTest`, `MockMvc` y `@MockBean` — no tienen dependencias externas.
+Para 5 de los 6 servicios (file, gateway, dashboard, form, notification), todos los tests existentes son pruebas unitarias que usan `@WebMvcTest`, `MockMvc` y `@MockBean` - no tienen dependencias externas.
 
 El `promotion-service` es la excepción: tiene 3 tests con `@Testcontainers` (`HealthStatusReevaluationTest`, `AdministrativeCorrectionTest`, `PromotionPerformanceTest`) que levantan contenedores Docker reales. Estos se **excluyen explícitamente** de la etapa de Unit Tests mediante filtros `--tests` y son responsabilidad de la etapa de Integration Tests.
 
@@ -224,7 +183,7 @@ La etapa ejecuta 7 sub-stages en paralelo. Los servicios con tests de integraci�
 stage('Integration Tests') {
     parallel {
         stage('integration:file-service') {
-            steps { echo 'Sin tests de integración en file-service — etapa omitida.' }
+            steps { echo 'Sin tests de integración en file-service - etapa omitida.' }
         }
         stage('integration:gateway-service') {
             steps {
@@ -238,7 +197,7 @@ stage('Integration Tests') {
                 testResults: 'services/circleguard-gateway-service/build/test-results/test/*.xml' } }
         }
         stage('integration:dashboard-service') {
-            steps { echo 'Sin tests de integración en dashboard-service — etapa omitida.' }
+            steps { echo 'Sin tests de integración en dashboard-service - etapa omitida.' }
         }
         stage('integration:form-service') {
             steps {
@@ -291,7 +250,7 @@ stage('Integration Tests') {
 | `integration:form-service` | `QuestionnaireJpaIntegrationTest` | `@DataJpaTest` + H2 | Sí |
 | `integration:notification-service` | `ExposureNotificationIntegrationTest` | `@SpringBootTest` + `@MockBean` dispatcher | Sí |
 | `integration:identity-service` | `IdentityVaultServiceIntegrationTest` | `@DataJpaTest` + H2 | Sí |
-| `integration:promotion-service` | `SurveyListenerIntegrationTest` | `@Testcontainers` + Neo4j | **No — omitido** |
+| `integration:promotion-service` | `SurveyListenerIntegrationTest` | `@Testcontainers` + Neo4j | **No - omitido** |
 
 **¿Por qué está omitido `promotion-service`?**
 
@@ -406,7 +365,7 @@ stage('Smoke Tests') {
             kubectl rollout status deployment/file-service -n circleguard-dev --timeout=120s
             // ... (5 rollout status restantes)
 
-            # Puertos 310XX (dev) — host.docker.internal porque los NodePorts están en el host,
+            # Puertos 310XX (dev) - host.docker.internal porque los NodePorts están en el host,
             # no en el contenedor Jenkins
             for port_svc in "31085:file-service" "31087:gateway-service" "31084:dashboard-service" \
                             "31086:form-service" "31082:notification-service" "31088:promotion-service"; do
@@ -423,10 +382,10 @@ Los smoke tests verifican que los 6 servicios están respondiendo después del d
 
 1. **`kubectl rollout status`**: espera a que cada Deployment alcance el estado `Available`.
 2. **`curl` HTTP via `host.docker.internal`**: realiza una petición GET a la raíz de cada servicio vía su NodePort. Los NodePorts son puertos del nodo Kubernetes (Docker Desktop = host), no del contenedor Jenkins. Desde dentro del contenedor Jenkins, `localhost` sería el propio contenedor, por lo que se usa `host.docker.internal` para alcanzar el host. Los códigos aceptables son:
-   - `200 OK` — endpoint raíz configurado
-   - `404 Not Found` — Spring Boot inició, pero no hay mapeo en `/`
-   - `401 Unauthorized` — Spring Security activo, el servicio está corriendo
-   - `000` — **FALLA**: connection refused, el servicio no está respondiendo
+   - `200 OK` - endpoint raíz configurado
+   - `404 Not Found` - Spring Boot inició, pero no hay mapeo en `/`
+   - `401 Unauthorized` - Spring Security activo, el servicio está corriendo
+   - `000` - **FALLA**: connection refused, el servicio no está respondiendo
 
 **Smoke tests manuales desde el host** (fuera de Jenkins):
 
@@ -482,7 +441,7 @@ environment {
 
 ### 4.2 Kubeconfig para acceso a Kubernetes
 
-El contenedor Jenkins recibe el kubeconfig del host montado en `/var/jenkins_home/.kube/config`. Sin embargo, ese archivo apunta al servidor K8s en `https://127.0.0.1:6443`, que desde dentro del contenedor Jenkins refiere al propio contenedor — no al host donde corre Kubernetes (Docker Desktop).
+El contenedor Jenkins recibe el kubeconfig del host montado en `/var/jenkins_home/.kube/config`. Sin embargo, ese archivo apunta al servidor K8s en `https://127.0.0.1:6443`, que desde dentro del contenedor Jenkins refiere al propio contenedor - no al host donde corre Kubernetes (Docker Desktop).
 
 La solución es crear una copia del kubeconfig parcheada con la dirección correcta y dejarla en el volumen persistente de Jenkins:
 
@@ -502,74 +461,5 @@ El kubeconfig original del host (`~/.kube/config`) **no se modifica**. La variab
 
 ---
 
-## 5. Verificación del Pipeline
-
-### 5.1 Ejecutar el primer build
-
-Después de guardar el Multibranch Pipeline, Jenkins realiza el Branch Indexing automáticamente. Para ejecutar manualmente:
-
-1. Ir al job `circleguard-dev-pipeline`.
-2. Seleccionar el branch deseado (ej. `master`).
-3. Hacer clic en **Build Now**.
-
-### 5.2 Monitorear el Stage View
-
-El Stage View muestra cada etapa con su estado (verde/rojo) y duración. Las etapas paralelas aparecen en columnas:
-
 ![Stage View del pipeline con todas las etapas en verde](../screenshots/jenkins-pipeline-stage-view-dev.png)
 
-### 5.3 Verificar imágenes Docker :dev
-
-```bash
-docker images | grep ":dev"
-```
-
-Salida esperada:
-
-```
-circleguard/file-service         dev   abc123def456   2 minutes ago   187MB
-circleguard/gateway-service      dev   def456abc123   2 minutes ago   195MB
-circleguard/dashboard-service    dev   123abc456def   2 minutes ago   201MB
-circleguard/form-service         dev   456def123abc   2 minutes ago   198MB
-circleguard/notification-service dev   789ghi012jkl   2 minutes ago   193MB
-circleguard/promotion-service    dev   012jkl789ghi   2 minutes ago   215MB
-```
-
-![Imágenes Docker con tag :dev construidas por el pipeline](../screenshots/docker-images-dev.png)
-
-### 5.4 Verificar pods en el namespace dev
-
-```bash
-kubectl get pods -n circleguard-dev
-kubectl get svc -n circleguard-dev
-```
-
-![Pods del namespace circleguard-dev en estado Running](../screenshots/kubectl-pods-dev.png)
-
-![Services del namespace circleguard-dev con NodePorts 310XX](../screenshots/kubectl-svc-dev.png)
-
-### 5.5 Verificar resultados de pruebas en Jenkins
-
-1. Ir al build → **Test Result**.
-2. Los reportes JUnit muestran los resultados por servicio.
-
-![Resultados de pruebas unitarias publicados en Jenkins](../screenshots/jenkins-test-results-dev.png)
-
----
-
-## 6. Consideraciones y Limitaciones
-
-| Consideración | Detalle |
-|---|---|
-| **Gradle wrapper** | `chmod +x gradlew` es requerido en la etapa Checkout porque `git clone` no preserva permisos de ejecución |
-| **Gradle cache** | `~/.gradle` del host se monta en el contenedor Jenkins para evitar descargar `gradle-8.14-bin.zip` en cada build |
-| **Dockerfiles simplificados** | Los Dockerfiles copian el JAR pre-compilado por la etapa Build JARs. No tienen un builder stage con Gradle, lo que elimina la descarga repetida del wrapper y dependencias en el Docker build |
-| **Testcontainers en CI** | Los tests de Testcontainers (`HealthStatusReevaluationTest`, `AdministrativeCorrectionTest`, `PromotionPerformanceTest`) están omitidos en el pipeline porque el Docker socket de Docker Desktop en macOS es un proxy incompatible con la librería Java de Testcontainers. Pasan en entorno local |
-| **Testcontainers — Ryuk** | `TESTCONTAINERS_RYUK_DISABLED=true` deshabilita el contenedor de limpieza Ryuk, que falla en entornos Docker-en-Docker |
-| **Kubeconfig parcheado** | El kubeconfig del host apunta a `127.0.0.1:6443`, inaccesible desde dentro del contenedor Jenkins. Se mantiene una copia en `/var/jenkins_home/kube-jenkins.conf` con `host.docker.internal:6443`, que sí es alcanzable |
-| **Smoke tests via host.docker.internal** | Los NodePorts se exponen en el nodo Kubernetes (host), no en el contenedor Jenkins. `curl localhost:PORT` falla desde Jenkins; se usa `host.docker.internal:PORT` |
-| **Conflicto de NodePorts — infra** | Neo4j (30474) y MailHog (30025) tienen NodePorts en el namespace prod. En el namespace dev, estos Services se convierten a ClusterIP para evitar el conflicto. El acceso interno de los microservicios a Neo4j y MailHog no se ve afectado |
-| **Conflicto de NodePorts — servicios** | Los 6 microservicios usan NodePorts 300XX en prod. En dev se usa el rango 310XX (31082–31088) para coexistir con prod simultáneamente |
-| **`sed` BusyBox** | El contenedor Jenkins usa Alpine Linux con BusyBox sed, que no soporta backreferences (`\1`) en reemplazos con `-E`. Se usan sustituciones explícitas y el patrón simple `s/:latest/:dev/g` |
-| **Infraestructura replicada** | Los manifests de `k8s/infra/` se despliegan también en `circleguard-dev`, duplicando PostgreSQL, Kafka, Neo4j, Redis y MailHog. Esto garantiza aislamiento total pero consume más recursos del clúster |
-| **Puntos 3, 4 y 5** | Las etapas E2E Tests y Performance Tests son placeholders que se implementarán en el Punto 3. Los pipelines de stage y master environments se definen en los Puntos 4 y 5 |

@@ -6,10 +6,10 @@ Este documento describe las capacidades de Change Management implementadas en Ci
 
 | Capacidad | Estado | Artefacto / Ubicación |
 |---|---|---|
-| **Generación automática de Release Notes** | ✅ Existente | Stage `Release Notes` en `Jenkinsfile.master:622` |
-| **Sistema de etiquetado de releases (semver)** | ✅ Existente | `scripts/semver.sh` + `git tag ${VERSION}` en el pipeline |
-| **Proceso formal de Change Management** | ✅ Nuevo | Este documento (sección 3) |
-| **Planes de rollback** | ✅ Nuevo | Este documento (sección 4) + `scripts/rollback.sh` |
+| **Generación automática de Release Notes** | Existente | Stage `Release Notes` en `Jenkinsfile.master:622` |
+| **Sistema de etiquetado de releases (semver)** | Existente | `scripts/semver.sh` + `git tag ${VERSION}` en el pipeline |
+| **Proceso formal de Change Management** | Nuevo | Este documento (sección 3) |
+| **Planes de rollback** | Nuevo | Este documento (sección 4) + `scripts/rollback.sh` |
 
 ---
 
@@ -188,7 +188,7 @@ Adicionalmente, el pipeline de master escala todos los deployments a **0 réplic
 | **Vulnerabilidad crítica post-deploy** (CVE reportada tras el release) | Reporte de seguridad, Trivy en re-scan | Rollback por versión git: checkout `vX.Y.Z` anterior → rebuild → redeploy | 15-30 min |
 | **Fallo de base de datos / migración** (servicio arranca pero falla en runtime) | Logs de error en pods, health check degradado | Rollout undo + restore de backup de base de datos | Variable |
 
-### Plan A — Rollback rápido (revisión K8s anterior)
+### Plan A - Rollback rápido (revisión K8s anterior)
 
 Usa `kubectl rollout undo` para revertir el Deployment a la revisión inmediatamente anterior. Válido cuando la imagen anterior aún existe en el nodo local y el problema es de configuración o startup.
 
@@ -227,7 +227,7 @@ kubectl rollout status deployment/auth-service -n circleguard
 kubectl scale deployment --all -n circleguard --replicas=1
 ```
 
-### Plan B — Rollback por versión (tag Git anterior)
+### Plan B - Rollback por versión (tag Git anterior)
 
 Para revertir a una versión específica del código (p.ej. cuando el Plan A no es suficiente porque la imagen anterior fue sobreescrita o la regresión es de código).
 
@@ -257,7 +257,7 @@ kubectl rollout restart deployment --all -n circleguard
 kubectl get pods -n circleguard
 ```
 
-### Plan C — Verificación post-rollback
+### Plan C - Verificación post-rollback
 
 Después de cualquier rollback ejecutar la verificación mínima:
 

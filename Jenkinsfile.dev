@@ -567,18 +567,36 @@ pipeline {
 
         // ─────────────────────────────────────────────────────────────────
         stage('E2E Tests') {
+            // Suite E2E Karate — journeys cross-service reales (Punto 5).
+            // Journeys: A (acceso campus sano→GREEN), B (síntomas→RED), C (visitante),
+            //           + suite de humo (disponibilidad 8 servicios).
             // Prerrequisito: configurar en Jenkins las credenciales:
-            //   e2e-jwt-token  → JWT válido para el entorno dev
-            //   e2e-anon-id    → anonymousId del usuario de prueba
-            //   e2e-qr-token   → QR token válido para gateway
+            //   e2e-jwt-token  → JWT válido para el entorno dev (fallback si no hay creds de login)
+            //   e2e-anon-id    → anonymousId del usuario de prueba (fallback)
+            //   e2e-qr-token   → QR token pre-generado (opcional)
+            //   e2e-username   → usuario LDAP/local de prueba (opcional, para login real)
+            //   e2e-password   → contraseña (opcional)
             steps {
-                sh 'chmod +x e2e/run_e2e.sh'
                 withCredentials([
                     string(credentialsId: 'e2e-jwt-token',  variable: 'TEST_JWT'),
                     string(credentialsId: 'e2e-anon-id',    variable: 'TEST_ANON_ID'),
                     string(credentialsId: 'e2e-qr-token',   variable: 'TEST_QR_TOKEN')
                 ]) {
-                    sh 'bash e2e/run_e2e.sh'
+                    sh '''
+                        E2E_HOST=host.docker.internal \
+                        TEST_JWT=${TEST_JWT} \
+                        TEST_ANON_ID=${TEST_ANON_ID} \
+                        TEST_QR_TOKEN=${TEST_QR_TOKEN} \
+                        ./gradlew :e2e-tests:e2eTest --no-daemon
+                    '''
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'e2e-tests/build/karate-reports/**',
+                                     allowEmptyArchive: true
+                    junit testResults: 'e2e-tests/build/test-results/e2eTest/*.xml',
+                          allowEmptyResults: true
                 }
             }
         }

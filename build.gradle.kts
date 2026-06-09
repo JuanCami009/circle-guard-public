@@ -17,6 +17,9 @@ allprojects {
 }
 
 subprojects {
+    // e2e-tests tiene su propio build.gradle.kts con Karate; no necesita Spring/Kotlin/Lombok del monorepo
+    if (name == "e2e-tests") return@subprojects
+
     apply(plugin = "java")
     apply(plugin = "org.jetbrains.kotlin.jvm")
     apply(plugin = "jacoco")

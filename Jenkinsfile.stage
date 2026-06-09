@@ -559,27 +559,39 @@ pipeline {
 
         // ─────────────────────────────────────────────────────────────────
         stage('E2E Tests') {
-            // Prerrequisito: configurar en Jenkins las credenciales (reutiliza las mismas del dev pipeline):
-            //   e2e-jwt-token  → JWT válido (mismo para todos los entornos — auth compartido)
-            //   e2e-anon-id    → anonymousId del usuario de prueba
-            //   e2e-qr-token   → QR token válido para gateway
-            // Las variables E2E_PORT_* redirigen la suite E2E a los NodePorts 320XX del namespace stage.
+            // Suite E2E Karate — journeys cross-service reales contra namespace stage (320XX).
+            // Journeys: A (acceso campus sano→GREEN), B (síntomas→RED), C (visitante),
+            //           + suite de humo (disponibilidad 8 servicios).
+            // Las variables E2E_PORT_* apuntan a los NodePorts 320XX del namespace circleguard-stage.
             steps {
-                sh 'chmod +x e2e/run_e2e.sh'
                 withCredentials([
                     string(credentialsId: 'e2e-jwt-token',  variable: 'TEST_JWT'),
                     string(credentialsId: 'e2e-anon-id',    variable: 'TEST_ANON_ID'),
                     string(credentialsId: 'e2e-qr-token',   variable: 'TEST_QR_TOKEN')
                 ]) {
                     sh '''
+                        E2E_HOST=host.docker.internal \
                         E2E_PORT_NOTIFICATION=32082 \
+                        E2E_PORT_IDENTITY=32083 \
                         E2E_PORT_DASHBOARD=32084 \
                         E2E_PORT_FILE=32085 \
                         E2E_PORT_FORM=32086 \
                         E2E_PORT_GATEWAY=32087 \
                         E2E_PORT_PROMOTION=32088 \
-                        bash e2e/run_e2e.sh
+                        E2E_PORT_AUTH=32180 \
+                        TEST_JWT=${TEST_JWT} \
+                        TEST_ANON_ID=${TEST_ANON_ID} \
+                        TEST_QR_TOKEN=${TEST_QR_TOKEN} \
+                        ./gradlew :e2e-tests:e2eTest --no-daemon
                     '''
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'e2e-tests/build/karate-reports/**',
+                                     allowEmptyArchive: true
+                    junit testResults: 'e2e-tests/build/test-results/e2eTest/*.xml',
+                          allowEmptyResults: true
                 }
             }
         }
@@ -614,6 +626,39 @@ pipeline {
             post {
                 always {
                     archiveArtifacts artifacts: 'locust/locust-report-stage.html,locust/locust-stats-stage*.csv',
+                                     allowEmptyArchive: true
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Security Tests (OWASP ZAP)') {
+            // Escaneo pasivo de seguridad con OWASP ZAP contra los 8 servicios desplegados en stage.
+            // Modo baseline (passive): no lanza ataques activos — solo analiza tráfico pasivo.
+            // ZAP_FAIL_ON=High: bloquea el pipeline solo si hay alertas de severidad High.
+            // ZAP_PORT_* apuntan a los NodePorts 320XX del namespace circleguard-stage.
+            // identity (32083) y auth (32180) usan defaults al no tener NodePort stage explícito.
+            // Para suprimir falsos positivos de API, editar zap/rules.tsv con justificación.
+            steps {
+                sh 'chmod +x zap/run_zap.sh'
+                sh '''
+                    ZAP_HOST=host.docker.internal \
+                    ZAP_FAIL_ON=High \
+                    ZAP_TIMEOUT=120 \
+                    ZAP_PORT_NOTIFICATION=32082 \
+                    ZAP_PORT_DASHBOARD=32084 \
+                    ZAP_PORT_FILE=32085 \
+                    ZAP_PORT_FORM=32086 \
+                    ZAP_PORT_GATEWAY=32087 \
+                    ZAP_PORT_PROMOTION=32088 \
+                    ZAP_PORT_IDENTITY=32083 \
+                    ZAP_PORT_AUTH=32180 \
+                    bash zap/run_zap.sh
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'zap/reports/*.html,zap/reports/*.json',
                                      allowEmptyArchive: true
                 }
             }

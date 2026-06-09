@@ -29,17 +29,17 @@ RULES_FILE="$(pwd)/zap/rules.tsv"
 
 mkdir -p "$REPORTS_DIR"
 
-# Mapa: nombre → puerto
+# Mapa: nombre → puerto (defaults = prod; sobreescribir con ZAP_PORT_* para otros entornos)
 declare -A SERVICES
 SERVICES=(
-    ["notification-service"]="30082"
-    ["identity-service"]="30083"
-    ["dashboard-service"]="30084"
-    ["file-service"]="30085"
-    ["form-service"]="30086"
-    ["gateway-service"]="30087"
-    ["promotion-service"]="30088"
-    ["auth-service"]="30180"
+    ["notification-service"]="${ZAP_PORT_NOTIFICATION:-30082}"
+    ["identity-service"]="${ZAP_PORT_IDENTITY:-30083}"
+    ["dashboard-service"]="${ZAP_PORT_DASHBOARD:-30084}"
+    ["file-service"]="${ZAP_PORT_FILE:-30085}"
+    ["form-service"]="${ZAP_PORT_FORM:-30086}"
+    ["gateway-service"]="${ZAP_PORT_GATEWAY:-30087}"
+    ["promotion-service"]="${ZAP_PORT_PROMOTION:-30088}"
+    ["auth-service"]="${ZAP_PORT_AUTH:-30180}"
 )
 
 PASS=0

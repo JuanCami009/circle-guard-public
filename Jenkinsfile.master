@@ -579,16 +579,18 @@ pipeline {
 
         // ─────────────────────────────────────────────────────────────────
         stage('E2E Tests') {
-            // Reutiliza las mismas credenciales Jenkins configuradas para los pipelines dev y stage.
-            // Las variables E2E_PORT_* apuntan explícitamente a los NodePorts 300XX de producción.
+            // Suite E2E Karate — journeys cross-service reales contra namespace prod (300XX).
+            // Journeys: A (acceso campus sano→GREEN), B (síntomas→RED), C (visitante),
+            //           + suite de humo (disponibilidad 8 servicios).
+            // Reutiliza las credenciales Jenkins ya configuradas para dev y stage.
             steps {
-                sh 'chmod +x e2e/run_e2e.sh'
                 withCredentials([
                     string(credentialsId: 'e2e-jwt-token',  variable: 'TEST_JWT'),
                     string(credentialsId: 'e2e-anon-id',    variable: 'TEST_ANON_ID'),
                     string(credentialsId: 'e2e-qr-token',   variable: 'TEST_QR_TOKEN')
                 ]) {
                     sh '''
+                        E2E_HOST=host.docker.internal \
                         E2E_PORT_NOTIFICATION=30082 \
                         E2E_PORT_IDENTITY=30083 \
                         E2E_PORT_DASHBOARD=30084 \
@@ -597,8 +599,19 @@ pipeline {
                         E2E_PORT_GATEWAY=30087 \
                         E2E_PORT_PROMOTION=30088 \
                         E2E_PORT_AUTH=30180 \
-                        bash e2e/run_e2e.sh
+                        TEST_JWT=${TEST_JWT} \
+                        TEST_ANON_ID=${TEST_ANON_ID} \
+                        TEST_QR_TOKEN=${TEST_QR_TOKEN} \
+                        ./gradlew :e2e-tests:e2eTest --no-daemon
                     '''
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'e2e-tests/build/karate-reports/**',
+                                     allowEmptyArchive: true
+                    junit testResults: 'e2e-tests/build/test-results/e2eTest/*.xml',
+                          allowEmptyResults: true
                 }
             }
         }

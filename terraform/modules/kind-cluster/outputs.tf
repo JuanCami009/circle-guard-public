@@ -4,30 +4,30 @@ output "kubeconfig_path" {
 }
 
 output "kubeconfig" {
-  description = "Raw kubeconfig string for the cluster. Sensitive — parse with yamldecode if individual fields are needed."
-  value       = kind_cluster.this.kubeconfig
+  description = "Raw kubeconfig string for the cluster"
+  value       = local.kubeconfig_fixed
   sensitive   = true
 }
 
 output "endpoint" {
-  description = "Kubernetes API server endpoint"
-  value       = kind_cluster.this.endpoint
+  description = "Kubernetes API server endpoint (host.docker.internal for Jenkins)"
+  value       = local.endpoint
 }
 
 output "client_certificate" {
   description = "Client certificate for authenticating to the cluster (base64-encoded)"
-  value       = kind_cluster.this.client_certificate
+  value       = local.kube.users[0].user["client-certificate-data"]
   sensitive   = true
 }
 
 output "client_key" {
   description = "Client key for authenticating to the cluster (base64-encoded)"
-  value       = kind_cluster.this.client_key
+  value       = local.kube.users[0].user["client-key-data"]
   sensitive   = true
 }
 
 output "cluster_ca_certificate" {
-  description = "Cluster CA certificate used to verify the server (base64-encoded)"
-  value       = kind_cluster.this.cluster_ca_certificate
+  description = "Cluster CA certificate (base64-encoded)"
+  value       = local.kube.clusters[0].cluster["certificate-authority-data"]
   sensitive   = true
 }

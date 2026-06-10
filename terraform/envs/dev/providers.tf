@@ -4,10 +4,6 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5"
     }
-    kind = {
-      source  = "tehcyx/kind"
-      version = "~> 0.6"
-    }
     kubernetes = {
       source  = "hashicorp/kubernetes"
       version = "~> 2"
@@ -39,8 +35,6 @@ provider "aws" {
     sts            = "http://host.docker.internal:4566"
   }
 }
-
-provider "kind" {}
 
 provider "kubernetes" {
   host                   = module.cluster.endpoint

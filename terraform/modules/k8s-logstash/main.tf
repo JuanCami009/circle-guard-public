@@ -39,14 +39,14 @@ resource "kubernetes_config_map_v1" "logstash_pipeline" {
 
         mutate {
           # Ensure index-friendly field names
-          add_field => { "[@metadata][index]" => "circleguard-logs-%{+YYYY.MM.dd}" }
+          add_field => { "[@metadata][index]" => "circleguard-logs-%%{+YYYY.MM.dd}" }
         }
       }
 
       output {
         elasticsearch {
           hosts     => ["${var.elasticsearch_url}"]
-          index     => "%{[@metadata][index]}"
+          index     => "%%{[@metadata][index]}"
         }
       }
     CONF

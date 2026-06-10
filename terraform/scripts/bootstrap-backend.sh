@@ -12,7 +12,7 @@ LS_HOST="${LOCALSTACK_HOST:-localhost}"
 LS_URL="http://${LS_HOST}:4566"
 
 # Skip docker compose if LocalStack already healthy
-if curl -sf "${LS_URL}/_localstack/health" 2>/dev/null | grep -q '"s3": "available"'; then
+if curl -sf "${LS_URL}/_localstack/health" 2>/dev/null | grep -qE '"s3": "(available|running)"'; then
   echo "==> LocalStack already running and healthy. Skipping startup."
 else
   echo "==> Starting LocalStack..."
@@ -21,7 +21,7 @@ else
 
   echo "==> Waiting for LocalStack to be ready (up to 180s)..."
   ELAPSED=0
-  until curl -sf "${LS_URL}/_localstack/health" 2>/dev/null | grep -q '"s3": "available"'; do
+  until curl -sf "${LS_URL}/_localstack/health" 2>/dev/null | grep -qE '"s3": "(available|running)"'; do
     if [ "$ELAPSED" -ge 180 ]; then
       echo "ERROR: LocalStack did not become ready within 180 seconds." >&2
       exit 1

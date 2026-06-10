@@ -436,6 +436,7 @@ pipeline {
                         docker run --rm \
                             -v /var/run/docker.sock:/var/run/docker.sock \
                             -v "$PWD/trivy-reports":/out \
+                            -v trivy-db-cache:/root/.cache/trivy \
                             aquasec/trivy:latest image \
                             --severity HIGH,CRITICAL \
                             --exit-code ${TRIVY_EXIT_CODE} \
@@ -470,6 +471,7 @@ pipeline {
                     docker run --rm \
                         -v "$PWD":/src \
                         -v "$PWD/trivy-reports":/out \
+                        -v trivy-db-cache:/root/.cache/trivy \
                         aquasec/trivy:latest config \
                         --severity HIGH,CRITICAL \
                         --exit-code ${TRIVY_EXIT_CODE} \
@@ -481,6 +483,7 @@ pipeline {
                     docker run --rm \
                         -v "$PWD":/src \
                         -v "$PWD/trivy-reports":/out \
+                        -v trivy-db-cache:/root/.cache/trivy \
                         aquasec/trivy:latest config \
                         --severity HIGH,CRITICAL \
                         --exit-code ${TRIVY_EXIT_CODE} \

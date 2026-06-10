@@ -513,7 +513,13 @@ pipeline {
             steps {
                 dir('terraform/envs/dev') {
                     sh 'terraform init -input=false'
-                    sh 'terraform apply -input=false -auto-approve -target=module.cluster'
+                    sh '''
+                        terraform apply -input=false -auto-approve -target=module.cluster || {
+                            echo "Cluster creation failed (likely race condition), cleaning up and retrying..."
+                            kind delete cluster --name circleguard-dev 2>/dev/null || true
+                            terraform apply -input=false -auto-approve -target=module.cluster
+                        }
+                    '''
                 }
                 sh 'bash terraform/scripts/load-images.sh dev'
                 dir('terraform/envs/dev') {

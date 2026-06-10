@@ -21,6 +21,12 @@ RUN ARCH=$(dpkg --print-architecture) && \
     -o /usr/local/bin/kubectl && \
     chmod +x /usr/local/bin/kubectl
 
+# kind CLI
+RUN ARCH=$(dpkg --print-architecture) && \
+    curl -fsSL "https://kind.sigs.k8s.io/dl/v0.23.0/kind-linux-${ARCH}" \
+    -o /usr/local/bin/kind && \
+    chmod +x /usr/local/bin/kind
+
 # Terraform
 RUN TERRAFORM_VERSION=1.10.5 && \
     ARCH=$(dpkg --print-architecture) && \

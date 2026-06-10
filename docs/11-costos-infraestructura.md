@@ -1,8 +1,8 @@
-# Costos de Infraestructura — CircleGuard
+# Costos de Infraestructura - CircleGuard
 
 ## Resumen
 
-Este documento estima el costo de la infraestructura CircleGuard en un entorno de nube pública real (AWS EKS, us-east-1). El entorno actual de desarrollo usa Docker Desktop con LocalStack — costo operativo en desarrollo: **$0**.
+Este documento estima el costo de la infraestructura CircleGuard en un entorno de nube pública real (AWS EKS, us-east-1). El entorno actual de desarrollo usa Docker Desktop con LocalStack - costo operativo en desarrollo: **$0**.
 
 ---
 
@@ -66,36 +66,36 @@ Los recursos están definidos en `terraform/envs/prod/main.tf` y los módulos `t
 
 ## Estimación de costos en AWS (us-east-1)
 
-Referencia académica — precios On-Demand aproximados a junio 2026.
+Referencia académica - precios On-Demand aproximados a junio 2026.
 
-### Opción A — Nodo único (desarrollo/demo)
+### Opción A - Nodo único (desarrollo/demo)
 
 | Recurso | Tipo | Cantidad | Precio/mes |
 |---|---|---|---|
 | EC2 t3.2xlarge (8 vCPU, 32Gi) | Compute | 1 nodo | ~$240 |
 | EKS Control Plane | Managed | 1 cluster | $72 |
-| EBS gp3 — PostgreSQL (20 GB) | Storage | 1 vol. | ~$1.60 |
-| EBS gp3 — Neo4j (20 GB) | Storage | 1 vol. | ~$1.60 |
-| EBS gp3 — Elasticsearch (30 GB) | Storage | 1 vol. | ~$2.40 |
+| EBS gp3 - PostgreSQL (20 GB) | Storage | 1 vol. | ~$1.60 |
+| EBS gp3 - Neo4j (20 GB) | Storage | 1 vol. | ~$1.60 |
+| EBS gp3 - Elasticsearch (30 GB) | Storage | 1 vol. | ~$2.40 |
 | S3 circleguard-uploads (10 GB) | Storage | 1 bucket | ~$0.23 |
 | Secrets Manager (10 secretos) | Managed | 10 secrets | ~$4 |
-| Bandwidth saliente (50 GB/mes) | Network | — | ~$4.50 |
+| Bandwidth saliente (50 GB/mes) | Network | - | ~$4.50 |
 | **Total (nodo único)** | | | **~$326/mes** |
 
-### Opción B — Multi-nodo (producción real, alta disponibilidad)
+### Opción B - Multi-nodo (producción real, alta disponibilidad)
 
 | Recurso | Tipo | Cantidad | Precio/mes |
 |---|---|---|---|
-| EC2 t3.xlarge (4 vCPU, 16Gi) — microservicios | Compute | 2 nodos | ~$240 |
-| EC2 t3.large (2 vCPU, 8Gi) — observabilidad | Compute | 1 nodo | ~$60 |
-| EC2 t3.xlarge — datos (Neo4j, Kafka, ES) | Compute | 1 nodo | ~$120 |
+| EC2 t3.xlarge (4 vCPU, 16Gi) - microservicios | Compute | 2 nodos | ~$240 |
+| EC2 t3.large (2 vCPU, 8Gi) - observabilidad | Compute | 1 nodo | ~$60 |
+| EC2 t3.xlarge - datos (Neo4j, Kafka, ES) | Compute | 1 nodo | ~$120 |
 | EKS Control Plane | Managed | 1 cluster | $72 |
-| EBS gp3 — almacenamiento persistente (100 GB total) | Storage | — | ~$8 |
-| S3 + Secrets Manager | Managed | — | ~$5 |
-| Bandwidth + misc | — | — | ~$10 |
+| EBS gp3 - almacenamiento persistente (100 GB total) | Storage | - | ~$8 |
+| S3 + Secrets Manager | Managed | - | ~$5 |
+| Bandwidth + misc | - | - | ~$10 |
 | **Total (multi-nodo prod)** | | | **~$515/mes** |
 
-### Opción C — Entorno actual (Docker Desktop + LocalStack)
+### Opción C - Entorno actual (Docker Desktop + LocalStack)
 
 | Recurso | Costo |
 |---|---|

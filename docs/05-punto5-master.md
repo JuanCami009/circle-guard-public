@@ -294,18 +294,7 @@ for port_svc in "30085:file-service" "30087:gateway-service" "30084:dashboard-se
 done
 ```
 
-La lógica de validación es idéntica a los pipelines anteriores: cualquier respuesta HTTP (incluyendo 401, 403 o 404) confirma que Spring Boot inició correctamente. Solo HTTP 000 (connection refused) indica un fallo real. Los puertos son los NodePorts `300XX` canónicos del namespace de producción.
-
-**Puertos de smoke tests por entorno:**
-
-| Servicio | Producción | Stage | Desarrollo |
-|---|---|---|---|
-| file-service | **30085** | 32085 | 31085 |
-| gateway-service | **30087** | 32087 | 31087 |
-| dashboard-service | **30084** | 32084 | 31084 |
-| form-service | **30086** | 32086 | 31086 |
-| notification-service | **30082** | 32082 | 31082 |
-| promotion-service | **30088** | 32088 | 31088 |
+La lógica de validación es idéntica a los pipelines anteriores: cualquier respuesta HTTP (incluyendo 401, 403 o 404) confirma que Spring Boot inició correctamente. Solo HTTP 000 (connection refused) indica un fallo real. Los puertos son los NodePorts `300XX` canónicos del namespace de producción (ver tabla de sección 1.1).
 
 ### 4.9 E2E Tests
 
@@ -423,44 +412,7 @@ _Sin otros cambios en este release._
 
 ## 5. Resultados
 
-### 5.1 Imágenes Docker :latest
-
-Tras la etapa **Docker Build :latest**, el daemon Docker local contiene las seis imágenes con el tag `:latest`:
-
-```
-$ docker images | grep "circleguard.*latest"
-circleguard/promotion-service      latest    ...
-circleguard/notification-service   latest    ...
-circleguard/gateway-service        latest    ...
-circleguard/form-service           latest    ...
-circleguard/file-service           latest    ...
-circleguard/dashboard-service      latest    ...
-```
-
-![Imágenes Docker :latest en el daemon local](../screenshots/docker-images-master.png)
-
-### 5.2 Pods en namespace circleguard
-
-```
-$ kubectl get pods -n circleguard
-NAME                                    READY   STATUS    RESTARTS   AGE
-dashboard-service-...                   1/1     Running   0          ...
-file-service-...                        1/1     Running   0          ...
-form-service-...                        1/1     Running   0          ...
-gateway-service-...                     1/1     Running   0          ...
-kafka-...                               1/1     Running   0          ...
-mailhog-...                             1/1     Running   0          ...
-neo4j-...                               1/1     Running   0          ...
-notification-service-...               1/1     Running   0          ...
-postgres-...                            1/1     Running   0          ...
-promotion-service-...                  1/1     Running   0          ...
-redis-...                               1/1     Running   0          ...
-zookeeper-...                           1/1     Running   0          ...
-```
-
-![kubectl get pods circleguard - todos los pods Running](../screenshots/![alt text](image.png).png)
-
-### 5.3 Smoke Tests
+### 5.1 Smoke Tests
 
 ```
 Esperando que los pods del entorno master esten listos...
@@ -537,9 +489,9 @@ La prueba de rendimiento se ejecuta con los mismos parámetros que en dev y stag
 | Peticiones totales | ~1600 | - |
 | RPS promedio | ~28 | - |
 | Latencia p50 | ~3 ms | - |
-| Latencia p95 | ~8 ms | < 500 ms ✓ |
+| Latencia p95 | ~8 ms | < 500 ms (cumple) |
 | Latencia p99 | ~17 ms | - |
-| Fallos 5xx (endpoints de negocio) | 0 | < 1% ✓ |
+| Fallos 5xx (endpoints de negocio) | 0 | < 1% (cumple) |
 | Veredicto SLA | **APROBADO** | p95 < 500 ms, < 1% 5xx |
 
 El reporte completo se encuentra archivado como artefacto del build Jenkins en `locust/locust-report-master.html`.

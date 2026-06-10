@@ -1,16 +1,16 @@
-# Manual de Operaciones — CircleGuard
+# Manual de Operaciones - CircleGuard
 
 ## Accesos y URLs por entorno
 
 | Herramienta | Dev (31xxx) | Stage (32xxx) | Prod (30xxx) |
 |---|---|---|---|
-| Jenkins | `http://localhost:8080` | — | — |
+| Jenkins | `http://localhost:8080` | - | - |
 | Grafana | `http://localhost:31091` | `http://localhost:32091` | `http://localhost:30091` |
 | Kibana | `http://localhost:31092` | `http://localhost:32092` | `http://localhost:30092` |
 | Zipkin | `http://localhost:31093` | `http://localhost:32093` | `http://localhost:30093` |
 | Alertmanager | `http://localhost:31094` | `http://localhost:32094` | `http://localhost:30094` |
 | Prometheus | `http://localhost:31090` | `http://localhost:32090` | `http://localhost:30090` |
-| MailHog (SMTP UI) | `http://localhost:31025` | — | `http://localhost:30025` |
+| MailHog (SMTP UI) | `http://localhost:31025` | - | `http://localhost:30025` |
 
 Credenciales Grafana: `admin` / `circleguard` (configurable en `terraform/modules/k8s-grafana/main.tf:GF_SECURITY_ADMIN_PASSWORD`).
 
@@ -144,7 +144,7 @@ Definidas en `terraform/modules/k8s-prometheus/main.tf`. Critical inhibe Warning
 
 ### Destino de alertas
 
-- **Dev/Stage:** MailHog UI (`http://localhost:31025`) — sin envío SMTP real.
+- **Dev/Stage:** MailHog UI (`http://localhost:31025`) - sin envío SMTP real.
 - **Prod:** SMTP configurable vía `var.smtp_host` / `var.smtp_from` / `var.alert_receiver_email` en `terraform/modules/k8s-alertmanager/`.
 
 ---
@@ -153,7 +153,7 @@ Definidas en `terraform/modules/k8s-prometheus/main.tf`. Critical inhibe Warning
 
 | Síntoma | Causa probable | Diagnóstico |
 |---|---|---|
-| Pod en `CrashLoopBackOff` | Init container falla (BD no lista) | `kubectl describe pod <pod> -n <ns>` — ver eventos |
+| Pod en `CrashLoopBackOff` | Init container falla (BD no lista) | `kubectl describe pod <pod> -n <ns>` - ver eventos |
 | `503 Service Unavailable` desde gateway | Servicio destino caído | `up{job="circleguard-<svc>"}` en Prometheus |
 | Logs no aparecen en Kibana | Filebeat o Logstash caído | `kubectl get pods -n <ns> \| grep -E "filebeat\|logstash"` |
 | QR token rechazado con 401 | `QR_SECRET` distinto entre auth y gateway | `kubectl get configmap circleguard-config -n <ns> -o yaml \| grep QR_SECRET` |
@@ -179,7 +179,7 @@ kubectl exec -i -n circleguard-prod deploy/postgres -- \
 ### Neo4j
 
 ```bash
-# Backup (modo offline — detener neo4j primero)
+# Backup (modo offline - detener neo4j primero)
 kubectl scale deployment neo4j --replicas=0 -n circleguard-prod
 kubectl exec -n circleguard-prod deploy/neo4j -- neo4j-admin database dump neo4j --to-stdout > neo4j-backup-$(date +%Y%m%d).dump
 kubectl scale deployment neo4j --replicas=1 -n circleguard-prod

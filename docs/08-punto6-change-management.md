@@ -6,101 +6,24 @@ Este documento describe las capacidades de Change Management implementadas en Ci
 
 | Capacidad | Estado | Artefacto / Ubicación |
 |---|---|---|
-| **Generación automática de Release Notes** | ✅ Existente | Stage `Release Notes` en `Jenkinsfile.master:622` |
-| **Sistema de etiquetado de releases (semver)** | ✅ Existente | `scripts/semver.sh` + `git tag ${VERSION}` en el pipeline |
-| **Proceso formal de Change Management** | ✅ Nuevo | Este documento (sección 3) |
-| **Planes de rollback** | ✅ Nuevo | Este documento (sección 4) + `scripts/rollback.sh` |
+| **Generación automática de Release Notes** | Existente | Stage `Release Notes` en `Jenkinsfile.master:622` |
+| **Sistema de etiquetado de releases (semver)** | Existente | `scripts/semver.sh` + `git tag ${VERSION}` en el pipeline |
+| **Proceso formal de Change Management** | Nuevo | Este documento (sección 2) |
+| **Planes de rollback** | Nuevo | Este documento (sección 3) + `scripts/rollback.sh` |
 
 ---
 
-## 1. Generación Automática de Release Notes
+## 1. Generación Automática de Release Notes y Etiquetado
 
-### Funcionamiento
+Cada ejecución exitosa del pipeline de producción (`Jenkinsfile.master`) genera automáticamente el archivo `release-notes-${VERSION}.md` con los commits clasificados por tipo (Conventional Commits), metadata del build y los servicios desplegados. El stage crea además un tag Git ligero `${VERSION}` y archiva el Markdown como artefacto permanente en Jenkins.
 
-Cada ejecución exitosa del pipeline de producción (`Jenkinsfile.master`) genera un artefacto Markdown con las Release Notes de esa versión. El stage `Release Notes` (línea 622 de `Jenkinsfile.master`) ejecuta los siguientes pasos:
+La implementación detallada (lógica del script, reglas de semver, manejo de `PREV_TAG`, acceso al artefacto) se encuentra en [Punto 5 - sección 3](05-punto5-master.md#3-módulo-clave-generación-de-release-notes).
 
-1. Calcula la versión (`VERSION`) llamando a `scripts/semver.sh`.
-2. Determina el rango de commits desde el tag anterior (`PREV_TAG..HEAD`) o los últimos 10 si no hay tag previo.
-3. Clasifica los commits por tipo (Conventional Commits) en cuatro categorías.
-4. Genera el archivo `release-notes-${VERSION}.md` con metadata del build, lista de cambios y tabla de entorno.
-5. Crea un tag Git ligero `${VERSION}` en el commit actual.
-6. Archiva el Markdown como artefacto Jenkins (`archiveArtifacts`).
-
-### Formato del artefacto
-
-```
-release-notes-v0.1.0.md
-├── Tabla de metadata (versión, fecha, commit, autor, build Jenkins, branch)
-├── ## Novedades       ← commits con prefijo feat:
-├── ## Correcciones    ← commits con prefijo fix:
-├── ## Documentación   ← commits con prefijo docs:
-├── ## Otros cambios   ← resto de commits
-├── ## Entorno de despliegue
-├── ## Servicios desplegados (8 servicios con NodePorts)
-└── ## Validaciones ejecutadas (checklist de 11 etapas)
-```
-
-### Clasificación de commits (Conventional Commits)
-
-| Prefijo | Sección en Release Notes | Impacto semver |
-|---|---|---|
-| `feat:` / `feat(scope):` | Novedades | MINOR bump |
-| `fix:` / `fix(scope):` | Correcciones | PATCH bump |
-| `docs:` / `docs(scope):` | Documentación | PATCH bump |
-| `feat!:` / `BREAKING CHANGE` | Novedades | MAJOR bump |
-| Cualquier otro (`chore`, `ci`, `test`, etc.) | Otros cambios | PATCH bump |
-
-### Evidencia en Jenkins
-
-El artefacto se puede ver en la vista de build de Jenkins bajo **Build Artifacts**. La captura de pantalla de referencia está en [`screenshots/jenkins-master-release-notes.png`](../screenshots/jenkins-master-release-notes.png).
+La captura de pantalla del artefacto generado está en [`screenshots/jenkins-master-release-notes.png`](../screenshots/jenkins-master-release-notes.png).
 
 ---
 
-## 2. Sistema de Etiquetado de Releases
-
-### Script `scripts/semver.sh`
-
-El script `scripts/semver.sh` implementa versionado semántico automático basado en Conventional Commits. Sigue las reglas:
-
-```
-BREAKING CHANGE | feat! | fix!  →  MAJOR bump  (p.ej. v1.0.0 → v2.0.0)
-feat:                           →  MINOR bump  (p.ej. v0.1.0 → v0.2.0)
-fix: | cualquier otro           →  PATCH bump  (p.ej. v0.1.0 → v0.1.1)
-Sin tag previo                  →  v0.1.0 (arranque)
-```
-
-**Flujo de uso en el pipeline:**
-
-```bash
-VERSION=$(bash scripts/semver.sh)   # Calcula nueva versión
-# ... genera release-notes-${VERSION}.md ...
-git tag ${VERSION} || true          # Crea tag ligero en HEAD
-```
-
-### Relación tag ↔ release notes ↔ CHANGELOG
-
-```
-git tag v0.1.0  ──►  release-notes-v0.1.0.md (artefacto Jenkins)
-                └──►  Entrada en CHANGELOG.md (mantenida manualmente / por pipeline)
-```
-
-Los tags creados en el pipeline son **locales** al workspace de Jenkins. Para publicarlos en el repositorio remoto se puede agregar `git push origin ${VERSION}` al stage (no implementado para evitar permisos adicionales en el pipeline).
-
-Para listar todos los tags del repositorio:
-
-```bash
-git tag --sort=-version:refname
-```
-
-Para ver los commits de un release específico:
-
-```bash
-git log v0.1.0..v0.2.0 --oneline --no-merges
-```
-
----
-
-## 3. Proceso Formal de Change Management
+## 2. Proceso Formal de Change Management
 
 ### Marco de referencia
 
@@ -171,7 +94,7 @@ Un cambio está listo para producción cuando cumple **todos** los siguientes cr
 
 ---
 
-## 4. Planes de Rollback
+## 3. Planes de Rollback
 
 ### Restricción de despliegue local
 
@@ -188,7 +111,7 @@ Adicionalmente, el pipeline de master escala todos los deployments a **0 réplic
 | **Vulnerabilidad crítica post-deploy** (CVE reportada tras el release) | Reporte de seguridad, Trivy en re-scan | Rollback por versión git: checkout `vX.Y.Z` anterior → rebuild → redeploy | 15-30 min |
 | **Fallo de base de datos / migración** (servicio arranca pero falla en runtime) | Logs de error en pods, health check degradado | Rollout undo + restore de backup de base de datos | Variable |
 
-### Plan A — Rollback rápido (revisión K8s anterior)
+### Plan A - Rollback rápido (revisión K8s anterior)
 
 Usa `kubectl rollout undo` para revertir el Deployment a la revisión inmediatamente anterior. Válido cuando la imagen anterior aún existe en el nodo local y el problema es de configuración o startup.
 
@@ -227,7 +150,7 @@ kubectl rollout status deployment/auth-service -n circleguard
 kubectl scale deployment --all -n circleguard --replicas=1
 ```
 
-### Plan B — Rollback por versión (tag Git anterior)
+### Plan B - Rollback por versión (tag Git anterior)
 
 Para revertir a una versión específica del código (p.ej. cuando el Plan A no es suficiente porque la imagen anterior fue sobreescrita o la regresión es de código).
 
@@ -257,7 +180,7 @@ kubectl rollout restart deployment --all -n circleguard
 kubectl get pods -n circleguard
 ```
 
-### Plan C — Verificación post-rollback
+### Plan C - Verificación post-rollback
 
 Después de cualquier rollback ejecutar la verificación mínima:
 
@@ -296,7 +219,7 @@ scripts/rollback.sh <servicio|all> [--to-revision N]
 
 ---
 
-## 5. CHANGELOG
+## 4. CHANGELOG
 
 El archivo [`CHANGELOG.md`](../CHANGELOG.md) en la raíz del repositorio mantiene un historial consolidado de releases siguiendo el formato **Keep a Changelog** (<https://keepachangelog.com>) con **SemVer** (<https://semver.org>).
 
@@ -309,7 +232,7 @@ Diferencia con las Release Notes automáticas:
 
 ---
 
-## 6. Integración con el pipeline
+## 5. Integración con el pipeline
 
 ```
 Jenkinsfile.master

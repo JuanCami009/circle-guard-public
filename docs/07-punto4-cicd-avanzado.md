@@ -8,7 +8,7 @@ Este documento describe las capacidades de CI/CD avanzado implementadas en Circl
 |---|---|---|---|
 | **SonarQube** | Análisis estático de código + cobertura JaCoCo | No (reporta) | **Sí** (Quality Gate) |
 | **Trivy** | Escaneo de vulnerabilidades en imágenes Docker | No (reporta) | **Sí** (HIGH/CRITICAL) |
-| **Versionado semántico** | Bump automático MAJOR/MINOR/PATCH desde Conventional Commits | — | Reemplaza `v1.0.N` manual |
+| **Versionado semántico** | Bump automático MAJOR/MINOR/PATCH desde Conventional Commits | - | Reemplaza `v1.0.N` manual |
 | **Notificaciones de fallo** | Email vía MailHog en `post.failure` y `post.unstable` | Sí (todos los envs) | Sí |
 
 ### Flujo de pipeline actualizado
@@ -16,9 +16,9 @@ Este documento describe las capacidades de CI/CD avanzado implementadas en Circl
 ```mermaid
 flowchart TD
     A[Checkout] --> B[Prepare]
-    B --> C[Build JARs — 8 paralelos]
-    C --> D[Unit Tests — 8 paralelos]
-    D --> E[Integration Tests — 8 paralelos]
+    B --> C[Build JARs - 8 paralelos]
+    C --> D[Unit Tests - 8 paralelos]
+    D --> E[Integration Tests - 8 paralelos]
     E --> F[SonarQube Analysis]
     F --> G{Quality Gate}
     G -- dev/stage: warn --> H[Docker Build]
@@ -39,13 +39,13 @@ flowchart TD
 
 | Etapa | dev | stage | prod/master |
 |---|---|---|---|
-| SonarQube Analysis | ✅ ejecuta | ✅ ejecuta | ✅ ejecuta |
-| Quality Gate | ⚠️ reporta, no bloquea | ⚠️ reporta, no bloquea | 🚫 bloquea release |
+| SonarQube Analysis | Ejecuta | Ejecuta | Ejecuta |
+| Quality Gate | Reporta (no bloquea) | Reporta (no bloquea) | Bloquea release |
 | Docker Build tag | `:dev` | `:stage` | `:latest` |
 | Trivy Scan exit code | `0` (no bloquea) | `0` (no bloquea) | `1` (bloquea ante HIGH/CRITICAL) |
-| .trivyignore aplicado | No | No | ✅ sí |
-| Versionado semántico | No aplica | No aplica | ✅ `scripts/semver.sh` |
-| Email fallo/inestable | ✅ `devops@circleguard.local` | ✅ `devops@circleguard.local` | ✅ con prefijo `🚨 PRODUCCIÓN` |
+| .trivyignore aplicado | No | No | Si |
+| Versionado semántico | No aplica | No aplica | `scripts/semver.sh` |
+| Email fallo/inestable | `devops@circleguard.local` | `devops@circleguard.local` | Con prefijo `PRODUCCION` |
 
 ---
 
@@ -56,7 +56,7 @@ flowchart TD
 SonarQube se levanta con un Compose dedicado (separado del `docker-compose.yml` de infraestructura de aplicación) para no mezclar responsabilidades:
 
 ```bash
-# Levantar SonarQube (solo para CI — no es parte del stack de aplicación)
+# Levantar SonarQube (solo para CI - no es parte del stack de aplicación)
 docker compose -f sonarqube/docker-compose.sonarqube.yml up -d
 
 # Verificar disponibilidad
@@ -161,7 +161,7 @@ stage('Quality Gate') {
 |---|---|---|
 | dev | `false` | Pipeline continúa, build marcado Unstable |
 | stage | `false` | Pipeline continúa, build marcado Unstable |
-| master | **`true`** | Pipeline se **aborta** — no llega a Docker ni al deploy |
+| master | **`true`** | Pipeline se **aborta** - no llega a Docker ni al deploy |
 
 ### 1.5 Resultado esperado en SonarQube
 
@@ -216,7 +216,7 @@ El archivo `.trivyignore` en la raíz del repositorio lista CVEs aceptados consc
 
 ```
 # .trivyignore
-# CVE-2023-XXXXX  # JDK 21 base image — sin fix disponible; mitigado por network policy
+# CVE-2023-XXXXX  # JDK 21 base image - sin fix disponible; mitigado por network policy
 ```
 
 En el pipeline master, `.trivyignore` se monta en el contenedor Trivy:
@@ -234,7 +234,7 @@ Los reportes HTML se archivan en Jenkins:
 http://localhost:8080/job/circleguard-master-pipeline/job/master/<N>/artifact/trivy-reports/
 ```
 
-![Reporte Trivy HTML — resumen de vulnerabilidades por servicio](../screenshots/trivy-report-auth.png)
+![Reporte Trivy HTML - resumen de vulnerabilidades por servicio](../screenshots/trivy-report-auth.png)
 
 ---
 
@@ -242,7 +242,7 @@ http://localhost:8080/job/circleguard-master-pipeline/job/master/<N>/artifact/tr
 
 ### 3.1 Problema del versionado manual
 
-El pipeline original usaba `VERSION="v1.0.${BUILD_NUMBER}"` — un número de build monótonamente creciente sin semántica. No comunica si el release introduce una nueva funcionalidad (`feat:`), una corrección (`fix:`) o un cambio incompatible (`BREAKING CHANGE`).
+El pipeline original usaba `VERSION="v1.0.${BUILD_NUMBER}"` - un número de build monótonamente creciente sin semántica. No comunica si el release introduce una nueva funcionalidad (`feat:`), una corrección (`fix:`) o un cambio incompatible (`BREAKING CHANGE`).
 
 ### 3.2 Reglas de bump (Conventional Commits)
 
@@ -311,7 +311,7 @@ bash scripts/semver.sh
 
 ### 4.1 Canal: MailHog
 
-MailHog está en el `docker-compose.yml` de infraestructura (`mailhog/mailhog:latest`, SMTP 1025, UI 8025). No requiere credenciales ni TLS — perfecto para entorno de desarrollo y CI local.
+MailHog está en el `docker-compose.yml` de infraestructura (`mailhog/mailhog:latest`, SMTP 1025, UI 8025). No requiere credenciales ni TLS - perfecto para entorno de desarrollo y CI local.
 
 ### 4.2 Configuración en Jenkins
 
@@ -355,24 +355,17 @@ Consola : ${env.BUILD_URL}console
 }
 ```
 
-El pipeline master usa el prefijo `🚨 PRODUCCIÓN` en el asunto para diferenciarlo de dev/stage.
+El pipeline master usa el prefijo `PRODUCCION` en el asunto para diferenciarlo de dev/stage.
 
 **Casos que disparan notificación:**
 
 | Evento | Destinatario | Asunto |
 |---|---|---|
-| Fallo de cualquier etapa (dev) | devops@circleguard.local | ❌ FALLÓ … |
-| Build inestable — Quality Gate degradado (dev/stage) | devops@circleguard.local | ⚠️ INESTABLE … |
-| Fallo de producción (master) | devops@circleguard.local | 🚨 FALLÓ PRODUCCIÓN … |
+| Fallo de cualquier etapa (dev) | devops@circleguard.local | FALLO [job] #[N] |
+| Build inestable - Quality Gate degradado (dev/stage) | devops@circleguard.local | INESTABLE [job] #[N] |
+| Fallo de producción (master) | devops@circleguard.local | FALLO PRODUCCION [job] #[N] |
 
-### 4.4 Verificar en MailHog UI
-
-```bash
-# Abrir UI de MailHog (requiere docker compose up)
-open http://localhost:8025
-```
-
-![MailHog UI — email de fallo del pipeline dev](../screenshots/mailhog-failure-notification.png)
+![MailHog UI - email de fallo del pipeline dev](../screenshots/mailhog-failure-notification.png)
 
 ---
 

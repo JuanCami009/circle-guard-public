@@ -292,7 +292,7 @@ La infraestructura se convierte de NodePort a ClusterIP para evitar un conflicto
 
 #### Readiness Probe en los manifiestos de servicio
 
-**Problema detectado en la primera ejecución del pipeline stage:** `kubectl rollout status` reportaba `successfully rolled out` inmediatamente después de que el proceso del contenedor arrancaba — antes de que Spring Boot terminara de inicializarse (~27 segundos en form-service). El smoke test corría en esa ventana y recibía HTTP 000 (connection refused) porque Tomcat aún no había enlazado al puerto.
+**Problema detectado en la primera ejecución del pipeline stage:** `kubectl rollout status` reportaba `successfully rolled out` inmediatamente después de que el proceso del contenedor arrancaba - antes de que Spring Boot terminara de inicializarse (~27 segundos en form-service). El smoke test corría en esa ventana y recibía HTTP 000 (connection refused) porque Tomcat aún no había enlazado al puerto.
 
 Sin readiness probe, Kubernetes marca un pod como `Ready` en cuanto el contenedor inicia su proceso, sin verificar que la aplicación esté realmente lista para recibir tráfico.
 
@@ -307,7 +307,7 @@ readinessProbe:
   failureThreshold: 12      # falla definitiva tras 12 checks consecutivos fallidos (80s total)
 ```
 
-Con esta configuración, `kubectl rollout status` solo retorna "successfully rolled out" cuando el puerto TCP está abierto y aceptando conexiones — lo que garantiza que Spring Boot terminó de inicializarse. Los smoke tests subsiguientes siempre encuentran los servicios listos.
+Con esta configuración, `kubectl rollout status` solo retorna "successfully rolled out" cuando el puerto TCP está abierto y aceptando conexiones - lo que garantiza que Spring Boot terminó de inicializarse. Los smoke tests subsiguientes siempre encuentran los servicios listos.
 
 Se eligió `tcpSocket` en lugar de `httpGet` porque los endpoints HTTP de estos servicios requieren autenticación (retornan 401/403), y Kubernetes interpreta cualquier respuesta que no sea 2xx/3xx como falla del probe. `tcpSocket` solo verifica que el puerto esté abierto, lo cual es exactamente la condición necesaria para pasar el smoke test.
 
@@ -327,18 +327,7 @@ for port_svc in "32085:file-service" "32087:gateway-service" "32084:dashboard-se
 done
 ```
 
-La lógica de validación es idéntica al pipeline dev: cualquier respuesta HTTP (incluyendo 401, 403 o 404) confirma que el proceso Spring Boot inició correctamente y está atendiendo peticiones. Solo HTTP 000 (connection refused) indica un fallo real. Los puertos son los NodePorts 320XX del namespace stage.
-
-**Puertos de smoke tests por entorno:**
-
-| Servicio | Producción | Desarrollo | Stage |
-|---|---|---|---|
-| file-service | 30085 | 31085 | **32085** |
-| gateway-service | 30087 | 31087 | **32087** |
-| dashboard-service | 30084 | 31084 | **32084** |
-| form-service | 30086 | 31086 | **32086** |
-| notification-service | 30082 | 31082 | **32082** |
-| promotion-service | 30088 | 31088 | **32088** |
+La lógica de validación es idéntica al pipeline dev: cualquier respuesta HTTP (incluyendo 401, 403 o 404) confirma que el proceso Spring Boot inició correctamente y está atendiendo peticiones. Solo HTTP 000 (connection refused) indica un fallo real. Los puertos son los NodePorts 320XX del namespace stage (ver tabla de sección 1.1).
 
 ### 4.9 E2E Tests
 
@@ -404,44 +393,7 @@ El reporte se extrae como `locust-report-stage.html` (nombre distinto al dev `lo
 
 ## 5. Resultados
 
-### 5.1 Imágenes Docker :stage
-
-Tras la etapa **Docker Build :stage**, el daemon Docker local contiene las seis imágenes con el tag `:stage`:
-
-```
-$ docker images | grep ":stage"
-circleguard/promotion-service      stage    ...
-circleguard/notification-service   stage    ...
-circleguard/gateway-service        stage    ...
-circleguard/form-service           stage    ...
-circleguard/file-service           stage    ...
-circleguard/dashboard-service      stage    ...
-```
-
-![Imágenes Docker :stage en el daemon local](../screenshots/docker-images-stage.png)
-
-### 5.2 Pods en namespace circleguard-stage
-
-```
-$ kubectl get pods -n circleguard-stage
-NAME                                    READY   STATUS    RESTARTS   AGE
-dashboard-service-...                   1/1     Running   0          ...
-file-service-...                        1/1     Running   0          ...
-form-service-...                        1/1     Running   0          ...
-gateway-service-...                     1/1     Running   0          ...
-kafka-...                               1/1     Running   0          ...
-mailhog-...                             1/1     Running   0          ...
-neo4j-...                               1/1     Running   0          ...
-notification-service-...               1/1     Running   0          ...
-postgres-...                            1/1     Running   0          ...
-promotion-service-...                  1/1     Running   0          ...
-redis-...                               1/1     Running   0          ...
-zookeeper-...                           1/1     Running   0          ...
-```
-
-![kubectl get pods circleguard-stage - todos los pods Running](../screenshots/kubectl-pods-stage.png)
-
-### 5.3 Smoke Tests
+### 5.1 Smoke Tests
 
 ```
 Ejecutando smoke tests HTTP via NodePorts...

@@ -6,10 +6,10 @@ Este documento describe las capacidades de Seguridad implementadas en CircleGuar
 
 | Capacidad | Estado | Artefacto / Ubicación |
 |---|---|---|
-| **Escaneo continuo de vulnerabilidades** | ✅ Implementado | `Jenkinsfile.{dev,stage,master}` — stage `Trivy Scan` (imágenes) + `Trivy IaC Scan` (manifests) · `Jenkinsfile.security` (cron diario nocturno) · `.trivyignore` |
-| **Gestión segura de secretos** | ✅ Implementado | `terraform/modules/aws-secrets/` → `k8s-config/` → `circleguard-secrets` Secret · `k8s/infra/02-secrets.yml` · secretos inline eliminados de auth/identity |
-| **RBAC para acceso a recursos** | ✅ Implementado | `terraform/modules/k8s-rbac/` · `k8s/infra/18-rbac.yml` · SA dedicadas por servicio (`automountServiceAccountToken: false`) · Roles `developer` y `ci-deployer` |
-| **TLS para servicios expuestos públicamente** | ✅ Implementado | `terraform/modules/k8s-ingress/` · `k8s/infra/19-ingress.yml` · ingress-nginx NodePort + cert self-signed · Ingress HTTPS `circleguard.local` → `gateway-service` |
+| **Escaneo continuo de vulnerabilidades** | Implementado | `Jenkinsfile.{dev,stage,master}` - stage `Trivy Scan` (imágenes) + `Trivy IaC Scan` (manifests) · `Jenkinsfile.security` (cron diario nocturno) · `.trivyignore` |
+| **Gestión segura de secretos** | Implementado | `terraform/modules/aws-secrets/` → `k8s-config/` → `circleguard-secrets` Secret · `k8s/infra/02-secrets.yml` · secretos inline eliminados de auth/identity |
+| **RBAC para acceso a recursos** | Implementado | `terraform/modules/k8s-rbac/` · `k8s/infra/18-rbac.yml` · SA dedicadas por servicio (`automountServiceAccountToken: false`) · Roles `developer` y `ci-deployer` |
+| **TLS para servicios expuestos públicamente** | Implementado | `terraform/modules/k8s-ingress/` · `k8s/infra/19-ingress.yml` · ingress-nginx NodePort + cert self-signed · Ingress HTTPS `circleguard.local` → `gateway-service` |
 
 ---
 
@@ -44,7 +44,7 @@ graph LR
 Presente en los tres Jenkinsfiles desde Punto 4. Escanea las 8 imágenes Docker buscando vulnerabilidades `HIGH` y `CRITICAL`:
 
 ```groovy
-// Jenkinsfile.master — bloquea en prod si hay HIGH/CRITICAL
+// Jenkinsfile.master - bloquea en prod si hay HIGH/CRITICAL
 TRIVY_EXIT_CODE = '1'
 
 stage('Trivy Scan') {
@@ -64,7 +64,7 @@ stage('Trivy Scan') {
 }
 ```
 
-CVEs aceptados documentados en `.trivyignore` con justificación — política: sin entries sin comentario.
+CVEs aceptados documentados en `.trivyignore` con justificación - política: sin entries sin comentario.
 
 ### Escaneo IaC (stage `Trivy IaC Scan`)
 
@@ -146,7 +146,7 @@ sequenceDiagram
 **Antes (inseguro):** `auth-service` y `identity-service` tenían secretos duplicados en `extra_env` inline, evadiendo el Secret:
 
 ```hcl
-# ❌ Antes — valor en texto plano en el Deployment
+# ❌ Antes - valor en texto plano en el Deployment
 extra_env = {
   SPRING_LDAP_PASSWORD = "admin"          # auth-service
   VAULT_SECRET         = "my-vault-..."   # identity-service
@@ -158,7 +158,7 @@ extra_env = {
 **Después (seguro):** eliminados del `extra_env`. Los valores llegan vía `envFrom: secretRef: circleguard-secrets`:
 
 ```hcl
-# ✅ Después — secretos en el K8s Secret, inyectados por envFrom
+# ✅ Después - secretos en el K8s Secret, inyectados por envFrom
 extra_env = {
   SERVER_PORT           = "8180"
   SPRING_DATASOURCE_URL = "jdbc:postgresql://postgres-svc:5432/circleguard_auth"
@@ -171,7 +171,7 @@ extra_env = {
 
 Aplicado en: `terraform/envs/{dev,stage,prod}/main.tf` y `k8s/services/{15-auth,16-identity}-service.yml`.
 
-> **Nota sobre el manifest estático `k8s/infra/02-secrets.yml`:** El base64 commiteado es solo para el entorno de desarrollo local (kind). En un entorno real, este archivo no se commitea — los secretos se inyectan desde AWS Secrets Manager o un gestor externo (Vault, Sealed Secrets, ESO).
+> **Nota sobre el manifest estático `k8s/infra/02-secrets.yml`:** El base64 commiteado es solo para el entorno de desarrollo local (kind). En un entorno real, este archivo no se commitea - los secretos se inyectan desde AWS Secrets Manager o un gestor externo (Vault, Sealed Secrets, ESO).
 
 ---
 
@@ -201,7 +201,7 @@ graph TD
 
 ### ServiceAccounts por microservicio
 
-Cada uno de los 8 microservicios tiene su propia `ServiceAccount` con `automountServiceAccountToken: false`. Las apps Spring Boot no consumen la API de Kubernetes — montar el token del SA `default` es superficie de ataque innecesaria.
+Cada uno de los 8 microservicios tiene su propia `ServiceAccount` con `automountServiceAccountToken: false`. Las apps Spring Boot no consumen la API de Kubernetes - montar el token del SA `default` es superficie de ataque innecesaria.
 
 ```yaml
 # k8s/infra/18-rbac.yml
@@ -396,9 +396,9 @@ sed 's/namespace: circleguard/namespace: circleguard-dev/g' k8s/infra/19-ingress
 | `terraform/modules/k8s-ingress/variables.tf` | namespace, nodeport_http/https, ingress_host |
 | `terraform/modules/k8s-ingress/outputs.tf` | https_url, http_url, tls_secret_name |
 | `terraform/modules/k8s-ingress/versions.tf` | providers kubernetes, helm, tls |
-| `k8s/infra/18-rbac.yml` | Mirror estático — SAs, Roles, RoleBindings |
-| `k8s/infra/19-ingress.yml` | Mirror estático — Secret TLS, Ingress |
-| `Jenkinsfile.security` | Pipeline cron diario — Trivy image + IaC |
+| `k8s/infra/18-rbac.yml` | Mirror estático - SAs, Roles, RoleBindings |
+| `k8s/infra/19-ingress.yml` | Mirror estático - Secret TLS, Ingress |
+| `Jenkinsfile.security` | Pipeline cron diario - Trivy image + IaC |
 | `docs/10-punto8-seguridad.md` | Este documento |
 
 ### Modificados

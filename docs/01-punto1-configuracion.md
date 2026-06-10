@@ -1,11 +1,11 @@
-# Punto 1: Configuración de Jenkins, Docker y Kubernetes
+# Punto 1: Configuración de Jenkins, Docker y Kubernetes (10%)
 
 ## Resumen
 
 Este documento describe la configuración del entorno de desarrollo para el proyecto CircleGuard, que incluye:
 
 - **Jenkins**: servidor de CI/CD para orquestar pipelines de construcción y despliegue.
-- **Docker**: containerización de los 8 microservicios mediante Dockerfiles runtime (single-stage `eclipse-temurin:21-jre-alpine`).
+- **Docker**: containerización de los 8 microservicios mediante Dockerfiles multi-stage.
 - **Kubernetes**: clúster de Docker Desktop para el despliegue de los servicios e infraestructura.
 
 Los 8 microservicios del proyecto son:
@@ -21,11 +21,11 @@ Los 8 microservicios del proyecto son:
 | `circleguard-auth-service` | 8180 | PostgreSQL, OpenLDAP, JWT |
 | `circleguard-identity-service` | 8083 | PostgreSQL |
 
+---
+
 ## 1. Configuración de Jenkins
 
-Jenkins se ejecuta como un contenedor Docker standalone fuera del clúster de Kubernetes, lo que le permite:
-- Construir imágenes Docker usando el daemon del host.
-- Desplegar en Kubernetes usando el kubeconfig del host.
+Jenkins se ejecuta como un contenedor Docker standalone fuera del clúster de Kubernetes, lo que le permite construir imágenes Docker usando el daemon del host y desplegar en Kubernetes usando el kubeconfig del host.
 
 ### 1.1 Arrancar Jenkins
 
@@ -53,82 +53,48 @@ docker run -d \
   circleguard/jenkins:latest
 ```
 
-Los volúmenes y flags cumplen las siguientes funciones:
-
 | Volumen / flag | Propósito |
 |---|---|
 | `jenkins_home` | Persistencia de configuración, jobs y plugins |
 | `/var/run/docker.sock` | Acceso al Docker daemon del host para construir imágenes |
 | `--group-add 0` | Agrega al usuario `jenkins` el grupo root (GID 0), requerido porque Docker Desktop Mac expone el socket con ese GID dentro del contenedor |
 | `--add-host=kubernetes.docker.internal:host-gateway` | Resuelve `kubernetes.docker.internal` a la IP del host desde dentro del contenedor, permitiendo que `kubectl` alcance el API server de Docker Desktop sin modificar el kubeconfig |
-| `~/.kube/config` | Kubeconfig estándar del host montado directamente — no requiere script de preparación |
-| `~/.gradle` | Cache de Gradle del host (wrapper distributions, caches) — evita descargar `gradle-8.14-bin.zip` en cada build |
+| `~/.kube/config` | Kubeconfig estándar del host montado directamente |
+| `~/.gradle` | Cache de Gradle del host - evita descargar `gradle-8.14-bin.zip` en cada build |
 
-Obtener la contraseña inicial de administrador:
+### 1.2 Configuración inicial
 
-```bash
-docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
-```
-
-![Contraseña inicial de Jenkins](../screenshots/jenkins-initial-password.png)
-
-### 1.2 Configuración inicial del wizard
-
-1. Abrir `http://localhost:8080` en el navegador.
-2. Ingresar la contraseña obtenida en el paso anterior.
-
-![Pantalla de desbloqueo de Jenkins](../screenshots/unlock-jenkins.png)
-
-3. Seleccionar **"Install suggested plugins"** para instalar los plugins recomendados.
-
-![Selección de plugins sugeridos en el wizard de Jenkins](../screenshots/selected-install-suggested-plugins.png)
-
-4. Crear el usuario administrador con las credenciales deseadas.
-
-![Creación del usuario administrador de Jenkins](../screenshots/create-admin-user.png)
-
-5. Confirmar la URL de Jenkins (`http://localhost:8080`) y finalizar el wizard.
+1. Abrir `http://localhost:8080`.
+2. Obtener la contraseña inicial: `docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword`
+3. Seleccionar **Install suggested plugins**.
+4. Crear el usuario administrador y confirmar la URL.
 
 ### 1.3 Instalar plugins adicionales
 
-Ir a **Manage Jenkins → Plugins → Available plugins** y buscar e instalar los siguientes plugins:
+Ir a **Manage Jenkins -> Plugins -> Available plugins** e instalar:
 
 | Plugin | Función |
 |---|---|
 | `Docker Pipeline` | Permite construir y publicar imágenes Docker desde un Jenkinsfile |
 | `Kubernetes CLI` | Proporciona acceso a `kubectl` en los pipelines |
 
-> **Nota:** Git, Pipeline, Pipeline Stage View y sus dependencias ya se instalan automáticamente al seleccionar "Install suggested plugins" en el wizard.
+> **Nota:** Git, Pipeline, Pipeline Stage View y sus dependencias se instalan automáticamente al seleccionar "Install suggested plugins".
 
 ![Instalación de plugins Docker Pipeline y Kubernetes CLI](../screenshots/install-kubernetes-docker-plugins.png)
 
-### 1.4 Verificar acceso a Docker y Kubernetes desde Jenkins
-
-```bash
-# Verificar que Jenkins puede ejecutar comandos Docker
-docker exec jenkins docker ps
-
-# Verificar que Jenkins puede conectarse al clúster de Kubernetes
-docker exec jenkins kubectl get nodes
-```
-
-![Verificación de acceso a Docker y Kubernetes desde Jenkins](../screenshots/docker-exec-jenkins-kubectl-docker.png)
-
 ---
 
-## 2. Dockerfiles — Containerización de los microservicios
+## 2. Dockerfiles - Containerización de los microservicios
 
 ### 2.1 Estrategia multi-stage
 
-Cada uno de los 6 microservicios tiene su propio `Dockerfile` en su directorio (`services/<nombre>/Dockerfile`).
+Cada microservicio tiene su propio `Dockerfile` en `services/<nombre>/Dockerfile`. Todos siguen la misma estrategia multi-stage:
 
-Todos siguen la misma estrategia **multi-stage**:
-
-**Etapa 1 — builder** (`eclipse-temurin:21-jdk-alpine`):
+**Etapa 1 - builder** (`eclipse-temurin:21-jdk-alpine`):
 - Copia el monorepo completo (necesario porque Gradle necesita ver todos los subproyectos).
 - Ejecuta `./gradlew :services:<nombre>:bootJar -x test --no-daemon` para producir el JAR ejecutable.
 
-**Etapa 2 — runtime** (`eclipse-temurin:21-jre-alpine`):
+**Etapa 2 - runtime** (`eclipse-temurin:21-jre-alpine`):
 - Imagen final mínima (~200 MB vs ~600 MB con Debian).
 - Copia únicamente el JAR generado.
 - Ejecuta como usuario no-root (`appuser`) por seguridad.
@@ -138,7 +104,7 @@ El **contexto de build siempre es la raíz del repositorio** porque `settings.gr
 
 ### 2.2 Construir las imágenes
 
-Desde la raíz del repositorio (el punto es importante — indica el contexto de build):
+Desde la raíz del repositorio (el punto es importante - indica el contexto de build):
 
 ```bash
 docker build -t circleguard/file-service:latest \
@@ -166,33 +132,9 @@ docker build -t circleguard/identity-service:latest \
   -f services/circleguard-identity-service/Dockerfile .
 ```
 
-### 2.3 Verificar las imágenes construidas
-
-```bash
-docker images | grep circleguard
-```
-
-![Imágenes Docker de los 6 microservicios construidas](../screenshots/docker-images.png)
-
-### 2.4 Uso con Docker Compose
-
-El archivo `docker-compose.yml` en la raíz del repositorio provee **solo infraestructura** (PostgreSQL, Neo4j, Kafka, Redis, OpenLDAP, MailHog). Es la forma recomendada para desarrollar localmente con Gradle, sin necesidad de Kubernetes:
-
-```bash
-# Levantar infraestructura (sin microservicios)
-docker compose up -d
-
-# Correr un microservicio localmente contra esa infraestructura
-./gradlew :services:circleguard-auth-service:bootRun
-```
-
-> **Nota:** Los microservicios ya no están en `docker-compose.yml`. Para desplegar todos los servicios de forma integrada, usar Jenkins + Kubernetes (`k8s/`).
-
-![Docker Compose con infraestructura en estado running](../screenshots/docker-compose-ps.png)
-
 ---
 
-## 3. Kubernetes — Despliegue en el clúster de Docker Desktop
+## 3. Kubernetes - Despliegue en el clúster de Docker Desktop
 
 ### 3.1 Estructura de los manifests
 
@@ -245,44 +187,3 @@ kubectl apply -f k8s/services/
 ![Pods de Kubernetes en estado Running](../screenshots/kubectl-get-pods.png)
 
 ![Services de Kubernetes con NodePorts asignados](../screenshots/kubectl-get-svc.png)
-
-### 3.3 Verificación de la infraestructura
-
-**PostgreSQL — verificar las bases de datos creadas:**
-
-```bash
-kubectl exec -n circleguard deploy/postgres -- psql -U admin -d postgres -c "\l"
-```
-
-![Bases de datos PostgreSQL creadas en el clúster](../screenshots/kubectl-postgres.png)
-
-**Neo4j Browser:**
-
-Abrir en el navegador: `http://localhost:30474`
-- Usar credenciales: `neo4j` / `password`
-
-![Neo4j Browser conectado al clúster de Kubernetes](../screenshots/login-neo4j.png)
-
-**MailHog UI — verificar el servidor SMTP de desarrollo:**
-
-Abrir en el navegador: `http://localhost:30025`
-
-![Interfaz web de MailHog operativa](../screenshots/mailhog-home.png)
-
-### 3.4 Verificación de los microservicios
-
-Desde el host, verificar que cada microservicio responde via sus NodePorts:
-
-```bash
-curl -s -o /dev/null -w "file-service:       %{http_code}\n" http://localhost:30085/
-curl -s -o /dev/null -w "gateway-service:    %{http_code}\n" http://localhost:30087/
-curl -s -o /dev/null -w "dashboard-service:  %{http_code}\n" http://localhost:30084/
-curl -s -o /dev/null -w "form-service:       %{http_code}\n" http://localhost:30086/
-curl -s -o /dev/null -w "notification-svc:   %{http_code}\n" http://localhost:30082/
-curl -s -o /dev/null -w "promotion-service:  %{http_code}\n" http://localhost:30088/
-curl -s -o /dev/null -w "auth-service:       %{http_code}\n" http://localhost:30180/
-curl -s -o /dev/null -w "identity-service:   %{http_code}\n" http://localhost:30083/
-```
-
-![Respuestas HTTP de los 8 microservicios vía NodePorts](../screenshots/curl-services.png)
-

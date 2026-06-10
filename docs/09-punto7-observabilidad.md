@@ -6,13 +6,13 @@ Este documento describe las capacidades de Observabilidad y Monitoreo implementa
 
 | Capacidad | Estado | Artefacto / Ubicación |
 |---|---|---|
-| **Dashboards relevantes por servicio** | ✅ Implementado | Grafana — dashboard técnico (variable `$service`) + dashboard de negocio |
-| **Stack de monitoreo Prometheus + Grafana** | ✅ Implementado | `terraform/modules/k8s-prometheus/` · `terraform/modules/k8s-grafana/` · `k8s/infra/10-prometheus.yml` · `k8s/infra/17-grafana.yml` |
-| **ELK Stack (Elasticsearch + Logstash + Kibana)** | ✅ Implementado | `terraform/modules/k8s-{elasticsearch,logstash,kibana,filebeat}/` · `k8s/infra/12-15-*.yml` |
-| **Alertas para situaciones críticas** | ✅ Implementado | Prometheus `alert.rules.yml` + Alertmanager → MailHog SMTP (`k8s/infra/11-alertmanager.yml`) |
-| **Tracing distribuido** | ✅ Implementado | Zipkin (`terraform/modules/k8s-zipkin/` · `k8s/infra/16-zipkin.yml`) + `micrometer-tracing-bridge-brave` |
-| **Health checks + readiness/liveness probes** | ✅ Implementado | Spring Actuator HTTP probes en `terraform/modules/k8s-microservice/main.tf` + `k8s/services/09-16-*.yml` |
-| **Métricas de negocio y técnicas** | ✅ Implementado | Micrometer custom Counters en 4 servicios + métricas JVM/HTTP automáticas |
+| **Dashboards relevantes por servicio** | Implementado | Grafana - dashboard técnico (variable `$service`) + dashboard de negocio |
+| **Stack de monitoreo Prometheus + Grafana** | Implementado | `terraform/modules/k8s-prometheus/` · `terraform/modules/k8s-grafana/` · `k8s/infra/10-prometheus.yml` · `k8s/infra/17-grafana.yml` |
+| **ELK Stack (Elasticsearch + Logstash + Kibana)** | Implementado | `terraform/modules/k8s-{elasticsearch,logstash,kibana,filebeat}/` · `k8s/infra/12-15-*.yml` |
+| **Alertas para situaciones críticas** | Implementado | Prometheus `alert.rules.yml` + Alertmanager → MailHog SMTP (`k8s/infra/11-alertmanager.yml`) |
+| **Tracing distribuido** | Implementado | Zipkin (`terraform/modules/k8s-zipkin/` · `k8s/infra/16-zipkin.yml`) + `micrometer-tracing-bridge-brave` |
+| **Health checks + readiness/liveness probes** | Implementado | Spring Actuator HTTP probes en `terraform/modules/k8s-microservice/main.tf` + `k8s/services/09-16-*.yml` |
+| **Métricas de negocio y técnicas** | Implementado | Micrometer custom Counters en 4 servicios + métricas JVM/HTTP automáticas |
 
 ---
 
@@ -84,7 +84,7 @@ Grafana se provisiona con dos dashboards JSON vía ConfigMap:
 - `circleguard_health_status_updates_total{status}` (promotion-service)
 - `circleguard_notifications_sent_total{channel,result}` (notification-service)
 
-> 📸 Captura de referencia: [`../screenshots/grafana-dashboard.png`](../screenshots/grafana-dashboard.png)
+> Captura de referencia: [`../screenshots/grafana-dashboard.png`](../screenshots/grafana-dashboard.png)
 
 ---
 
@@ -152,7 +152,7 @@ Logstash parsea con `json { source => "message" }` e indexa en Elasticsearch baj
 
 Kibana expone UI en `:5601`. Patrón de índice sugerido: `circleguard-logs-*`. El campo de tiempo es `@timestamp`.
 
-> 📸 Captura de referencia: [`../screenshots/kibana-logs.png`](../screenshots/kibana-logs.png)
+> Captura de referencia: [`../screenshots/kibana-logs.png`](../screenshots/kibana-logs.png)
 
 ---
 
@@ -194,7 +194,7 @@ MANAGEMENT_TRACING_SAMPLING_PROBABILITY = "1.0"
 MANAGEMENT_ZIPKIN_TRACING_ENDPOINT      = "http://zipkin-svc:9411/api/v2/spans"
 ```
 
-> 📸 Captura de referencia: [`../screenshots/zipkin-trace.png`](../screenshots/zipkin-trace.png)
+> Captura de referencia: [`../screenshots/zipkin-trace.png`](../screenshots/zipkin-trace.png)
 
 ---
 
@@ -240,9 +240,9 @@ kubectl scale deploy/form-service -n circleguard --replicas=0
 # Ver alerta en MailHog: http://localhost:30025 (o 31025 en dev)
 ```
 
-> 📸 Capturas de referencia:
-> - [`../screenshots/prometheus-targets.png`](../screenshots/prometheus-targets.png) — Prometheus Targets (8 UP)
-> - [`../screenshots/mailhog-alert.png`](../screenshots/mailhog-alert.png) — Email de alerta en MailHog
+> Capturas de referencia:
+> - [`../screenshots/prometheus-targets.png`](../screenshots/prometheus-targets.png) - Prometheus Targets (8 UP)
+> - [`../screenshots/mailhog-alert.png`](../screenshots/mailhog-alert.png) - Email de alerta en MailHog
 
 ---
 
@@ -255,10 +255,10 @@ Con `spring-boot-starter-actuator` y las variables de entorno de la sección 1, 
 | Endpoint | URL | Propósito |
 |---|---|---|
 | `/actuator/health` | `http://<svc>:<port>/actuator/health` | Health general |
-| `/actuator/health/liveness` | — | Probe de liveness |
-| `/actuator/health/readiness` | — | Probe de readiness |
-| `/actuator/prometheus` | — | Métricas para Prometheus |
-| `/actuator/info` | — | Info del servicio |
+| `/actuator/health/liveness` | - | Probe de liveness |
+| `/actuator/health/readiness` | - | Probe de readiness |
+| `/actuator/prometheus` | - | Métricas para Prometheus |
+| `/actuator/info` | - | Info del servicio |
 
 ### Kubernetes Probes
 
@@ -370,7 +370,7 @@ sum by (status) (increase(circleguard_health_status_updates_total[24h]))
 
 ## 8. Despliegue
 
-### Opción A — Terraform (recomendado para CI/CD)
+### Opción A - Terraform (recomendado para CI/CD)
 
 ```bash
 cd terraform/envs/dev
@@ -381,7 +381,7 @@ terraform apply -auto-approve
 Los 8 módulos de observabilidad se crean en el orden declarado con `depends_on` correcto:
 `elasticsearch → logstash → kibana → filebeat → zipkin → alertmanager → prometheus → grafana`
 
-### Opción B — Manifests estáticos (kubectl directo)
+### Opción B - Manifests estáticos (kubectl directo)
 
 ```bash
 # namespace circleguard debe existir

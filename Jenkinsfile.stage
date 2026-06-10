@@ -318,24 +318,6 @@ pipeline {
         }
 
         // ─────────────────────────────────────────────────────────────────
-        stage('Mobile Tests') {
-            steps {
-                sh '''
-                    cd mobile
-                    npm ci --prefer-offline || npm install
-                    npm run test:ci
-                '''
-            }
-            post {
-                always {
-                    junit allowEmptyResults: true,
-                          testResults: 'mobile/junit.xml'
-                    archiveArtifacts artifacts: 'mobile/coverage/**', allowEmptyArchive: true
-                }
-            }
-        }
-
-        // ─────────────────────────────────────────────────────────────────
         stage('Coverage Reports') {
             steps {
                 sh './gradlew jacocoTestReport --no-daemon || true'

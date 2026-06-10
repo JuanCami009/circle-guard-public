@@ -45,6 +45,13 @@ pipeline {
         }
 
         // ─────────────────────────────────────────────────────────────────
+        stage('Start LocalStack') {
+            steps {
+                sh 'docker compose -f terraform/scripts/localstack-compose.yml up -d --no-recreate 2>/dev/null || docker compose -f terraform/scripts/localstack-compose.yml up -d'
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
         stage('Build JARs') {
             parallel {
                 stage('build:file-service') {

@@ -1,5 +1,5 @@
 data "aws_secretsmanager_secret_version" "secrets" {
-  for_each  = var.secret_arns
+  for_each  = nonsensitive(var.secret_arns)
   secret_id = each.value
 }
 

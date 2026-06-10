@@ -3,19 +3,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+export AWS_ACCESS_KEY_ID=test
+export AWS_SECRET_ACCESS_KEY=test
+export AWS_DEFAULT_REGION=us-east-1
+
 # In Jenkins (Docker), LOCALSTACK_HOST=host.docker.internal; locally defaults to localhost
 LS_HOST="${LOCALSTACK_HOST:-localhost}"
 LS_URL="http://${LS_HOST}:4566"
-
-# Run AWS CLI via Docker — no local installation required
-awscli() {
-  docker run --rm \
-    -e AWS_ACCESS_KEY_ID=test \
-    -e AWS_SECRET_ACCESS_KEY=test \
-    -e AWS_DEFAULT_REGION=us-east-1 \
-    amazon/aws-cli \
-    --endpoint-url "${LS_URL}" "$@"
-}
 
 # Skip docker compose if LocalStack already healthy
 if curl -sf "${LS_URL}/_localstack/health" 2>/dev/null | grep -qE '"s3": "(available|running)"'; then
@@ -39,22 +33,22 @@ else
 fi
 
 echo "==> Creating S3 bucket 'circleguard-tfstate'..."
-awscli s3 mb s3://circleguard-tfstate 2>/dev/null || true
+aws --endpoint-url "${LS_URL}" s3 mb s3://circleguard-tfstate 2>/dev/null || true
 
 echo "==> Enabling versioning on 'circleguard-tfstate'..."
-awscli s3api put-bucket-versioning \
+aws --endpoint-url "${LS_URL}" s3api put-bucket-versioning \
   --bucket circleguard-tfstate \
   --versioning-configuration Status=Enabled
 
 echo "==> Creating DynamoDB lock table 'circleguard-tflock'..."
-awscli dynamodb create-table \
+aws --endpoint-url "${LS_URL}" dynamodb create-table \
   --table-name circleguard-tflock \
   --attribute-definitions AttributeName=LockID,AttributeType=S \
   --key-schema AttributeName=LockID,KeyType=HASH \
   --billing-mode PAY_PER_REQUEST 2>/dev/null || true
 
 echo "==> Verifying resources..."
-awscli s3 ls
-awscli dynamodb list-tables
+aws --endpoint-url "${LS_URL}" s3 ls
+aws --endpoint-url "${LS_URL}" dynamodb list-tables
 
 echo "Backend bootstrap complete."

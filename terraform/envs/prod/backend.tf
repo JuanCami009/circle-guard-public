@@ -6,8 +6,8 @@ terraform {
     region                      = "us-east-1"
     dynamodb_table              = "circleguard-tflock"
     endpoints = {
-      s3       = "http://localhost:4566"
-      dynamodb = "http://localhost:4566"
+      s3       = "http://host.docker.internal:4566"
+      dynamodb = "http://host.docker.internal:4566"
     }
     skip_credentials_validation = true
     skip_metadata_api_check     = true

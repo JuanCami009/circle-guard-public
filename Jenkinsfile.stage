@@ -19,6 +19,7 @@ pipeline {
         KUBECONFIG                            = "${WORKSPACE}/terraform/envs/stage/kubeconfig-circleguard-stage.yaml"
         // CI/CD avanzado — SonarQube y Trivy
         SONAR_HOST_URL                        = 'http://host.docker.internal:9000'
+        LOCALSTACK_HOST                       = 'host.docker.internal'
         IMAGE_TAG                             = 'stage'
         // TRIVY_EXIT_CODE=0 en stage: reporta sin bloquear ante HIGH/CRITICAL
         TRIVY_EXIT_CODE                       = '0'

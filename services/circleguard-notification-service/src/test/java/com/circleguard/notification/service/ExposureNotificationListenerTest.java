@@ -17,7 +17,7 @@ class ExposureNotificationListenerTest {
     private ExposureNotificationListener listener;
 
     @MockBean
-    private KafkaTemplate<String, String> kafkaTemplate;
+    private KafkaTemplate<String, Object> kafkaTemplate;
 
     @MockBean
     private NotificationDispatcher dispatcher;

@@ -1,6 +1,7 @@
 locals {
   kind_config_path    = "/tmp/kind-config-${var.name}.yaml"
   kubeconfig_raw_path = "/tmp/kubeconfig-${var.name}-raw.yaml"
+  container_name      = "${var.name}-control-plane"
 
   kind_config = yamlencode({
     kind       = "Cluster"
@@ -33,17 +34,61 @@ resource "null_resource" "cluster" {
 
   provisioner "local-exec" {
     command = <<-EOT
+      set -e
+
+      # Delete stale cluster from previous failed runs
+      kind delete cluster --name ${var.name} 2>/dev/null || true
+
+      # Create cluster — kind may report a port-detection error on macOS Docker Desktop
+      # after successfully creating the container, so we ignore the exit code and verify manually.
       kind create cluster \
         --name ${var.name} \
         --config ${local_file.kind_config.filename} \
-        --wait 120s
-      kind get kubeconfig --name ${var.name} > ${local.kubeconfig_raw_path}
+        --wait 120s 2>&1 || true
+
+      # Verify the cluster is actually ready
+      ELAPSED=0
+      until docker exec ${local.container_name} kubectl get nodes --request-timeout=5s 2>/dev/null | grep -q "Ready"; do
+        if [ "$ELAPSED" -ge 120 ]; then
+          echo "ERROR: kind cluster did not become ready within 120 seconds" >&2
+          exit 1
+        fi
+        sleep 5
+        ELAPSED=$((ELAPSED + 5))
+      done
+      echo "Cluster ${var.name} is ready."
+
+      # If running inside a Docker container (Jenkins), connect to the kind network
+      # so the Kubernetes API is reachable via the container IP.
+      if [ -f /.dockerenv ]; then
+        SELF=$(cat /proc/self/cgroup 2>/dev/null | grep -oP '(?<=/docker/)[a-f0-9]{12}' | head -1 \
+               || hostname)
+        docker network connect kind "$SELF" 2>/dev/null || \
+          docker network connect kind jenkins 2>/dev/null || true
+        CLUSTER_IP=$(docker inspect ${local.container_name} \
+          --format '{{.NetworkSettings.Networks.kind.IPAddress}}')
+      else
+        CLUSTER_IP="127.0.0.1"
+      fi
+
+      # Get kubeconfig from inside the container and point server at reachable IP
+      docker exec ${local.container_name} cat /etc/kubernetes/admin.conf \
+        | sed "s|server: https://127.0.0.1:6443|server: https://$${CLUSTER_IP}:6443|g" \
+        > ${local.kubeconfig_raw_path}
     EOT
   }
 
   provisioner "local-exec" {
     when    = destroy
-    command = "kind delete cluster --name ${self.triggers.name} 2>/dev/null || true"
+    command = <<-EOT
+      kind delete cluster --name ${self.triggers.name} 2>/dev/null || true
+      if [ -f /.dockerenv ]; then
+        SELF=$(cat /proc/self/cgroup 2>/dev/null | grep -oP '(?<=/docker/)[a-f0-9]{12}' | head -1 \
+               || hostname)
+        docker network disconnect kind "$SELF" 2>/dev/null || \
+          docker network disconnect kind jenkins 2>/dev/null || true
+      fi
+    EOT
   }
 
   depends_on = [local_file.kind_config]
@@ -56,8 +101,8 @@ data "local_file" "kubeconfig_raw" {
 
 locals {
   kube             = yamldecode(data.local_file.kubeconfig_raw.content)
-  endpoint         = replace(local.kube.clusters[0].cluster.server, "127.0.0.1", "host.docker.internal")
-  kubeconfig_fixed = replace(data.local_file.kubeconfig_raw.content, "127.0.0.1", "host.docker.internal")
+  endpoint         = local.kube.clusters[0].cluster.server
+  kubeconfig_fixed = data.local_file.kubeconfig_raw.content
 }
 
 resource "local_file" "kubeconfig" {

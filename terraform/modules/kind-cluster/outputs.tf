@@ -10,7 +10,7 @@ output "kubeconfig" {
 }
 
 output "endpoint" {
-  description = "Kubernetes API server endpoint (host.docker.internal for Jenkins)"
+  description = "Kubernetes API server endpoint"
   value       = local.endpoint
 }
 

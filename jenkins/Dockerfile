@@ -36,7 +36,15 @@ RUN ARCH=$(uname -m) && \
     /tmp/awscliv2/aws/install && \
     rm -rf /tmp/awscliv2 /tmp/awscliv2.zip
 
+# gosu para bajar privilegios desde el entrypoint
+RUN curl -fsSL "https://github.com/tianon/gosu/releases/download/1.17/gosu-$(dpkg --print-architecture)" \
+    -o /usr/local/bin/gosu && \
+    chmod +x /usr/local/bin/gosu
+
 # Acceso al socket de Docker
 RUN groupadd -f docker && usermod -aG docker jenkins
 
-USER jenkins
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

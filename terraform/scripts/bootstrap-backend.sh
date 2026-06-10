@@ -6,15 +6,15 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 echo "==> Starting LocalStack..."
 docker compose -f "${SCRIPT_DIR}/localstack-compose.yml" up -d
 
-echo "==> Waiting for LocalStack to be ready (up to 60s)..."
+echo "==> Waiting for LocalStack to be ready (up to 120s)..."
 export AWS_ACCESS_KEY_ID=test
 export AWS_SECRET_ACCESS_KEY=test
 export AWS_DEFAULT_REGION=us-east-1
 
 ELAPSED=0
 until curl -sf http://localhost:4566/_localstack/health | grep -q '"s3": "available"'; do
-  if [ "$ELAPSED" -ge 60 ]; then
-    echo "ERROR: LocalStack did not become ready within 60 seconds." >&2
+  if [ "$ELAPSED" -ge 120 ]; then
+    echo "ERROR: LocalStack did not become ready within 120 seconds." >&2
     exit 1
   fi
   sleep 2

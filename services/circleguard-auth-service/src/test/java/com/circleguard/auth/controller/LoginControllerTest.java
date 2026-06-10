@@ -3,6 +3,7 @@ package com.circleguard.auth.controller;
 import com.circleguard.auth.client.IdentityClient;
 import com.circleguard.auth.service.JwtTokenService;
 import com.circleguard.auth.service.CustomUserDetailsService;
+import com.circleguard.auth.security.DualChainAuthenticationProvider;
 import com.circleguard.auth.security.JwtAuthenticationFilter;
 import com.circleguard.auth.security.SecurityConfig;
 import org.junit.jupiter.api.Test;
@@ -43,6 +44,9 @@ public class LoginControllerTest {
 
     @MockBean
     private JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    @MockBean
+    private DualChainAuthenticationProvider dualChainAuthenticationProvider;
 
     @Test
     void shouldLoginSuccessfullyAndReturnAnonymizedToken() throws Exception {

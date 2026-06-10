@@ -10,7 +10,7 @@ pipeline {
     environment {
         REGISTRY                              = 'circleguard'
         DEV_NS                                = 'circleguard-dev'
-        GRADLE_OPTS                           = '-Dorg.gradle.daemon=false'
+        GRADLE_OPTS                           = '-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx512m'
         DOCKER_HOST                           = 'unix:///var/run/docker.sock'
         TESTCONTAINERS_RYUK_DISABLED          = 'true'
         TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE = '/var/run/docker.sock'

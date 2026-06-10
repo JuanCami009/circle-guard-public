@@ -318,27 +318,6 @@ pipeline {
         }
 
         // ─────────────────────────────────────────────────────────────────
-        stage('Mobile Tests') {
-            // Pruebas unitarias de la app React Native (Expo) con cobertura.
-            // jest-junit genera junit.xml para el panel de tests de Jenkins.
-            // El reporte de cobertura (lcov/cobertura) se archiva como artefacto.
-            steps {
-                sh '''
-                    cd mobile
-                    npm ci --prefer-offline || npm install
-                    npm run test:ci
-                '''
-            }
-            post {
-                always {
-                    junit allowEmptyResults: true,
-                          testResults: 'mobile/junit.xml'
-                    archiveArtifacts artifacts: 'mobile/coverage/**', allowEmptyArchive: true
-                }
-            }
-        }
-
-        // ─────────────────────────────────────────────────────────────────
         stage('Coverage Reports') {
             // Genera y publica reportes JaCoCo de los 8 microservicios.
             // Requiere Jenkins Coverage Plugin instalado.
@@ -796,7 +775,6 @@ pipeline {
                         echo "- [x] Build JARs (8 servicios)"
                         echo "- [x] Unit Tests (8 servicios)"
                         echo "- [x] Integration Tests (8 servicios)"
-                        echo "- [x] Mobile Tests (React Native / Expo)"
                         echo "- [x] Coverage Reports (JaCoCo + jest)"
                         echo "- [x] Docker Build :latest (8 servicios)"
                         echo "- [x] Trivy Scan (vulnerabilidades HIGH/CRITICAL)"

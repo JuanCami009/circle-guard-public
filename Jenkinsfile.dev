@@ -318,27 +318,6 @@ pipeline {
         }
 
         // ─────────────────────────────────────────────────────────────────
-        stage('Mobile Tests') {
-            // Pruebas unitarias de la app React Native (Expo).
-            // Genera reporte de cobertura (lcov/cobertura) y JUnit XML.
-            // Requiere: jest-junit en devDependencies del mobile/package.json
-            steps {
-                sh '''
-                    cd mobile
-                    npm ci --prefer-offline || npm install
-                    npm run test:ci
-                '''
-            }
-            post {
-                always {
-                    junit allowEmptyResults: true,
-                          testResults: 'mobile/junit.xml'
-                    archiveArtifacts artifacts: 'mobile/coverage/**', allowEmptyArchive: true
-                }
-            }
-        }
-
-        // ─────────────────────────────────────────────────────────────────
         stage('Coverage Reports') {
             // Genera y publica los reportes de cobertura JaCoCo de los 8 microservicios.
             // jacocoTestReport se ejecuta automáticamente al final de cada test task

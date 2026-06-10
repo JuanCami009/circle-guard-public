@@ -30,6 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "spring.datasource.username=sa",
     "spring.datasource.password=",
     "spring.jpa.hibernate.ddl-auto=create-drop",
+    "spring.flyway.enabled=false",
     "circleguard.promotion-service.url=http://localhost:9999"
 })
 @AutoConfigureMockMvc

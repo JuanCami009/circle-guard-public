@@ -1,62 +1,80 @@
-# ---------------------------------------------------------------------------
-# bitnami/redis Helm chart — standalone, no auth.
-# fullnameOverride = "redis-svc" matches the existing ConfigMap entry
-# SPRING_DATA_REDIS_HOST=redis-svc used by all Spring Boot microservices.
-# ---------------------------------------------------------------------------
-
-resource "helm_release" "redis" {
-  name       = "redis"
-  chart      = "redis"
-  repository = "https://charts.bitnami.com/bitnami"
-  version    = var.chart_version
-  namespace  = var.namespace
-
-  wait    = true
-  timeout = 600
-
-  set {
-    name  = "architecture"
-    value = var.architecture
+resource "kubernetes_deployment_v1" "redis" {
+  metadata {
+    name      = "redis"
+    namespace = var.namespace
+    labels = {
+      app = "redis"
+    }
   }
 
-  # No password — matches existing k8s/infra/07-redis.yml (plain redis:7.2, no auth)
-  set {
-    name  = "auth.enabled"
-    value = "false"
+  spec {
+    replicas = 1
+
+    selector {
+      match_labels = {
+        app = "redis"
+      }
+    }
+
+    template {
+      metadata {
+        labels = {
+          app = "redis"
+        }
+      }
+
+      spec {
+        container {
+          name  = "redis"
+          image = "redis:7.2"
+
+          port {
+            container_port = 6379
+          }
+
+          readiness_probe {
+            exec {
+              command = ["redis-cli", "ping"]
+            }
+            initial_delay_seconds = 5
+            period_seconds        = 5
+            failure_threshold     = 6
+          }
+
+          resources {
+            requests = {
+              memory = "64Mi"
+              cpu    = "50m"
+            }
+            limits = {
+              memory = "128Mi"
+              cpu    = "200m"
+            }
+          }
+        }
+      }
+    }
   }
 
-  # Service name resolves to redis-svc inside the cluster
-  set {
-    name  = "fullnameOverride"
-    value = "redis-svc"
+  wait_for_rollout = true
+}
+
+resource "kubernetes_service_v1" "redis_svc" {
+  metadata {
+    name      = "redis-svc"
+    namespace = var.namespace
   }
 
-  set {
-    name  = "master.service.ports.redis"
-    value = "6379"
-  }
+  spec {
+    selector = {
+      app = "redis"
+    }
 
-  # Disable PVC — kind's default storage class is slow to provision and blocks pod start
-  set {
-    name  = "master.persistence.enabled"
-    value = "false"
-  }
+    port {
+      port        = 6379
+      target_port = 6379
+    }
 
-  # Explicit resources — prevents BestEffort QoS (first to be OOMKilled on memory-starved node)
-  set {
-    name  = "master.resources.requests.memory"
-    value = "64Mi"
-  }
-  set {
-    name  = "master.resources.limits.memory"
-    value = "128Mi"
-  }
-  set {
-    name  = "master.resources.requests.cpu"
-    value = "50m"
-  }
-  set {
-    name  = "master.resources.limits.cpu"
-    value = "200m"
+    type = "ClusterIP"
   }
 }

@@ -26,8 +26,8 @@ output "grafana_url" {
 }
 
 output "kibana_url" {
-  description = "Kibana UI — explorador de logs"
-  value       = module.kibana.ui_url
+  description = "Kibana UI — explorador de logs (solo disponible con enable_elk = true)"
+  value       = var.enable_elk ? module.kibana[0].ui_url : "ELK deshabilitado"
 }
 
 output "zipkin_url" {

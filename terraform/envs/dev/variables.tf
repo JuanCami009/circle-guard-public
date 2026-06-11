@@ -22,3 +22,9 @@ variable "replicas" {
   type    = number
   default = 1
 }
+
+variable "enable_elk" {
+  type        = bool
+  default     = false
+  description = "Deploy ELK stack (Elasticsearch, Logstash, Kibana, Filebeat). Disable to save ~2 GB on local kind clusters."
+}

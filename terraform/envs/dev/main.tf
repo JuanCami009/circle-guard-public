@@ -104,7 +104,7 @@ module "config" {
     MANAGEMENT_METRICS_TAGS_APPLICATION              = "circleguard"
     MANAGEMENT_TRACING_SAMPLING_PROBABILITY          = "1.0"
     MANAGEMENT_ZIPKIN_TRACING_ENDPOINT               = "http://zipkin-svc:9411/api/v2/spans"
-    JAVA_TOOL_OPTIONS                                = "-XX:MaxRAMPercentage=60"
+    JAVA_TOOL_OPTIONS                                = "-XX:MaxRAMPercentage=50"
   }
   depends_on = [module.ns, module.secrets]
 }
@@ -153,30 +153,34 @@ module "mailhog" {
 
 # ── 5b. Observabilidad (Punto 7) ───────────────────────────────────────────────
 module "elasticsearch" {
+  count      = var.enable_elk ? 1 : 0
   source     = "../../modules/k8s-elasticsearch"
   namespace  = module.ns.name
   depends_on = [module.ns]
 }
 
 module "logstash" {
+  count             = var.enable_elk ? 1 : 0
   source            = "../../modules/k8s-logstash"
   namespace         = module.ns.name
-  elasticsearch_url = "http://${module.elasticsearch.host}:${module.elasticsearch.port}"
+  elasticsearch_url = "http://${module.elasticsearch[0].host}:${module.elasticsearch[0].port}"
   depends_on        = [module.elasticsearch]
 }
 
 module "kibana" {
+  count             = var.enable_elk ? 1 : 0
   source            = "../../modules/k8s-kibana"
   namespace         = module.ns.name
   nodeport_ui       = var.nodeport_base + 92
-  elasticsearch_url = "http://${module.elasticsearch.host}:${module.elasticsearch.port}"
+  elasticsearch_url = "http://${module.elasticsearch[0].host}:${module.elasticsearch[0].port}"
   depends_on        = [module.elasticsearch]
 }
 
 module "filebeat" {
+  count         = var.enable_elk ? 1 : 0
   source        = "../../modules/k8s-filebeat"
   namespace     = module.ns.name
-  logstash_host = "${module.logstash.host}:${module.logstash.beats_port}"
+  logstash_host = "${module.logstash[0].host}:${module.logstash[0].beats_port}"
   depends_on    = [module.logstash]
 }
 
@@ -208,7 +212,7 @@ module "grafana" {
   namespace         = module.ns.name
   nodeport_ui       = var.nodeport_base + 91
   prometheus_url    = "http://${module.prometheus.host}:${module.prometheus.port}"
-  elasticsearch_url = "http://${module.elasticsearch.host}:${module.elasticsearch.port}"
+  elasticsearch_url = "http://elasticsearch-svc:9200"
   zipkin_url        = "http://${module.zipkin.host}:${module.zipkin.port}"
   depends_on        = [module.prometheus, module.elasticsearch, module.zipkin]
 }
@@ -370,7 +374,7 @@ module "services" {
   volume_mounts = each.key == "file-service" ? [{ name = "uploads", mount_path = "/app/uploads", read_only = false }] : []
   volumes       = each.key == "file-service" ? [{ name = "uploads", type = "emptyDir" }] : []
 
-  depends_on = [module.config, module.postgres, module.neo4j, module.kafka, module.redis, module.openldap, module.mailhog, module.rbac, module.elasticsearch, module.kibana]
+  depends_on = [module.config, module.postgres, module.neo4j, module.kafka, module.redis, module.openldap, module.mailhog, module.rbac]
 }
 
 # ── 8. Ingress-nginx + TLS (Punto 8 — Seguridad) ──────────────────────────────

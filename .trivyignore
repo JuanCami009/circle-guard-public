@@ -5,6 +5,11 @@
 #
 # IMPORTANTE: revisar y actualizar esta lista en cada release.
 # CVEs sin justificación documentada deben ser remediados, no ignorados.
-
-# Ejemplo de uso (descomentar cuando aplique):
-# CVE-2023-XXXXX  # JDK 21 base image — sin fix disponible aún; mitigado por red policy
+#
+# ── Historial de remediación ──────────────────────────────────────────────────
+# 2026-06-11: Spring Boot 3.2.4 → 3.4.5, Tomcat forzado a 10.1.55, apk upgrade
+#             Remedia: CVE-2025-22235, CVE-2025-41249, CVE-2024-22262,
+#                      CVE-2024-38816, CVE-2024-38819, CVE-2024-34750,
+#                      CVE-2024-50379, CVE-2024-56337, CVE-2025-24813,
+#                      CVE-2025-48988, CVE-2025-48989, CVE-2025-52520,
+#                      CVE-2025-53506, CVE-2025-55752, CVE-2026-45447 (OpenSSL)

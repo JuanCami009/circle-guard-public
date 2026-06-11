@@ -27,9 +27,16 @@ resource "helm_release" "kafka" {
     value = "true"
   }
 
+  # bitnami/kafka ≥26: brokers configured via broker.replicaCount in Zookeeper mode
   set {
-    name  = "replicaCount"
+    name  = "broker.replicaCount"
     value = tostring(var.replicas)
+  }
+
+  # Must be 0 in Zookeeper mode — controller nodes are KRaft-only
+  set {
+    name  = "controller.replicaCount"
+    value = "0"
   }
 
   # Makes the broker headless + client service names start with "kafka-svc"

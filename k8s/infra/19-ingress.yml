@@ -16,7 +16,7 @@
 #     -n circleguard --dry-run=client -o yaml > k8s/infra/19-ingress.yml (sección Secret)
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── Secret TLS (cert self-signed dev — NO usar en producción real) ────────────
+# ── Secret TLS (cert self-signed dev  - NO usar en producción real) ────────────
 # Los valores son un cert/key self-signed para CN=circleguard.local generados
 # con openssl para el entorno de desarrollo local (kind).
 apiVersion: v1

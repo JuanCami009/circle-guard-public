@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# semver.sh — Calcula la próxima versión semántica leyendo los commits
+# semver.sh  - Calcula la próxima versión semántica leyendo los commits
 # desde el último tag vX.Y.Z hasta HEAD usando Conventional Commits.
 #
 # Reglas de bump:

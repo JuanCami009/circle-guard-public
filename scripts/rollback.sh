@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# rollback.sh — Revierte uno o todos los microservicios de CircleGuard
+# rollback.sh  - Revierte uno o todos los microservicios de CircleGuard
 # al deployment anterior usando 'kubectl rollout undo'.
 #
 # Uso:
@@ -74,7 +74,7 @@ rollback_service() {
     echo "rollback: procesando deployment/$svc" >&2
 
     if ! kubectl get deployment "$svc" -n "$NAMESPACE" &>/dev/null; then
-        echo "  WARN: deployment/$svc no existe en namespace $NAMESPACE — omitiendo." >&2
+        echo "  WARN: deployment/$svc no existe en namespace $NAMESPACE  - omitiendo." >&2
         return 0
     fi
 

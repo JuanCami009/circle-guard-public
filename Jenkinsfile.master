@@ -17,7 +17,7 @@ pipeline {
         // kubeconfig parcheado con host.docker.internal en lugar de 127.0.0.1
         // (el kubeconfig original del host no es accesible desde dentro del contenedor)
         KUBECONFIG                            = "${WORKSPACE}/terraform/envs/prod/kubeconfig-circleguard-prod.yaml"
-        // CI/CD avanzado — SonarQube y Trivy
+        // CI/CD avanzado  - SonarQube y Trivy
         SONAR_HOST_URL                        = 'http://host.docker.internal:9000'
         LOCALSTACK_HOST                       = 'host.docker.internal'
         TF_VAR_localstack_host                = 'host.docker.internal'
@@ -367,7 +367,7 @@ pipeline {
         // ─────────────────────────────────────────────────────────────────
         stage('Quality Gate') {
             // Espera el veredicto del Quality Gate de SonarQube vía webhook.
-            // abortPipeline: true en prod — BLOQUEA el release si el Quality Gate falla.
+            // abortPipeline: true en prod  - BLOQUEA el release si el Quality Gate falla.
             // Ningún código con deuda técnica crítica o cobertura insuficiente llega a producción.
             // Requiere: webhook en SonarQube > Administration > Webhooks apuntando a
             //           http://JENKINS_URL/sonarqube-webhook/
@@ -450,11 +450,11 @@ pipeline {
                             ${REGISTRY}/${svc}-service:${IMAGE_TAG} || SCAN_FAIL=1
                     done
                     if [ "${TRIVY_EXIT_CODE}" = "1" ] && [ "${SCAN_FAIL}" = "1" ]; then
-                        echo "Trivy encontró vulnerabilidades HIGH/CRITICAL — bloqueando release a producción."
+                        echo "Trivy encontró vulnerabilidades HIGH/CRITICAL  - bloqueando release a producción."
                         echo "Opciones: (1) parchear la imagen base, (2) agregar CVE a .trivyignore con justificación."
                         exit 1
                     fi
-                    echo "Trivy scan completado — sin vulnerabilidades HIGH/CRITICAL bloqueantes."
+                    echo "Trivy scan completado  - sin vulnerabilidades HIGH/CRITICAL bloqueantes."
                 '''
             }
             post {
@@ -497,10 +497,10 @@ pipeline {
                         -o /out/trivy-iac-terraform.html \
                         /src/terraform || IAC_FAIL=1
                     if [ "${TRIVY_EXIT_CODE}" = "1" ] && [ "${IAC_FAIL}" = "1" ]; then
-                        echo "Trivy IaC encontró misconfiguraciones HIGH/CRITICAL — bloqueando release a producción."
+                        echo "Trivy IaC encontró misconfiguraciones HIGH/CRITICAL  - bloqueando release a producción."
                         exit 1
                     fi
-                    echo "Trivy IaC scan completado — sin misconfiguraciones HIGH/CRITICAL bloqueantes."
+                    echo "Trivy IaC scan completado  - sin misconfiguraciones HIGH/CRITICAL bloqueantes."
                 '''
             }
             post {
@@ -532,7 +532,7 @@ pipeline {
                     sh '''
                         # Taint cluster if control-plane container is not running so terraform recreates it
                         if ! docker inspect --format "{{.State.Running}}" circleguard-prod-control-plane 2>/dev/null | grep -q "true"; then
-                            echo "==> kind cluster container not running — tainting module.cluster for recreation"
+                            echo "==> kind cluster container not running  - tainting module.cluster for recreation"
                             terraform taint -ignore-remote-version module.cluster.null_resource.cluster 2>/dev/null || true
                         fi
                     '''
@@ -562,7 +562,7 @@ pipeline {
                     echo "Ejecutando smoke tests HTTP via NodePorts..."
                     # HTTP 200, 404 o 401 indican que Spring Boot inicio correctamente.
                     # Solo HTTP 000 (connection refused) o 5xx son errores reales.
-                    # Puertos 300XX (producción) — el esquema canónico de los manifests
+                    # Puertos 300XX (producción)  - el esquema canónico de los manifests
                     for port_svc in "30085:file-service" "30087:gateway-service" "30084:dashboard-service" "30086:form-service" "30082:notification-service" "30088:promotion-service" "30180:auth-service" "30083:identity-service"; do
                         PORT=$(echo $port_svc | cut -d: -f1)
                         SVC=$(echo $port_svc  | cut -d: -f2)
@@ -580,7 +580,7 @@ pipeline {
 
         // ─────────────────────────────────────────────────────────────────
         stage('E2E Tests') {
-            // Suite E2E Karate — journeys cross-service reales contra namespace prod (300XX).
+            // Suite E2E Karate  - journeys cross-service reales contra namespace prod (300XX).
             // Journeys: A (acceso campus sano→GREEN), B (síntomas→RED), C (visitante),
             //           + suite de humo (disponibilidad 8 servicios).
             // Reutiliza las credenciales Jenkins ya configuradas para dev y stage.
@@ -658,7 +658,7 @@ pipeline {
         // ─────────────────────────────────────────────────────────────────
         stage('Security Tests (OWASP ZAP)') {
             // Escaneo pasivo de seguridad con OWASP ZAP contra los 8 servicios desplegados.
-            // Modo baseline (passive): no lanza ataques activos — solo analiza tráfico pasivo.
+            // Modo baseline (passive): no lanza ataques activos  - solo analiza tráfico pasivo.
             // ZAP_FAIL_ON=High: bloquea el release solo si hay alertas de severidad High.
             // Para suprimir falsos positivos de API, editar zap/rules.tsv con justificación.
             // Los reportes HTML se archivan como artefactos para auditoría.
@@ -839,10 +839,10 @@ pipeline {
             echo "Pipeline finalizado: ${currentBuild.currentResult}"
         }
         success {
-            echo "Master pipeline EXITOSO — imagenes :latest desplegadas en namespace: circleguard | Release Notes archivadas"
+            echo "Master pipeline EXITOSO  - imagenes :latest desplegadas en namespace: circleguard | Release Notes archivadas"
         }
         failure {
-            echo "Master pipeline FALLIDO — revisar logs anteriores"
+            echo "Master pipeline FALLIDO  - revisar logs anteriores"
             sh 'kind delete cluster --name circleguard-prod 2>/dev/null || true'
             emailext(
                 subject: "🚨 FALLÓ PRODUCCIÓN ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
@@ -861,7 +861,7 @@ Verificar: Quality Gate, Trivy Scan, o etapa de despliegue.
         }
         unstable {
             emailext(
-                subject: "⚠️ INESTABLE PRODUCCIÓN ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
+                subject: "[INESTABLE] PRODUCCIÓN ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
                 body: """Pipeline de producción inestable (Quality Gate degradado o Trivy con advertencias).
 
 Job     : ${env.JOB_NAME}

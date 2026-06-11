@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Jenkinsfile.security — Escaneo continuo de vulnerabilidades (Punto 8)
+// Jenkinsfile.security  - Escaneo continuo de vulnerabilidades (Punto 8)
 //
 // Pipeline programado que corre diariamente (H 2 * * * = ~02:00 AM local).
 // Realiza dos tipos de escaneo:
@@ -148,7 +148,7 @@ pipeline {
         }
         failure {
             emailext(
-                subject: "🔴 SEGURIDAD: Vulnerabilidades detectadas — ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                subject: "[SEGURIDAD] Vulnerabilidades detectadas  - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                 body: """Escaneo de seguridad diario encontró vulnerabilidades HIGH/CRITICAL.
 
 Job     : ${env.JOB_NAME}
@@ -168,7 +168,7 @@ Acciones recomendadas:
         }
         unstable {
             emailext(
-                subject: "⚠️ SEGURIDAD: Scan inestable — ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                subject: "[SEGURIDAD] Scan inestable  - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                 body: """El escaneo de seguridad diario finalizó con advertencias.
 
 Job     : ${env.JOB_NAME}
@@ -179,7 +179,7 @@ Consola : ${env.BUILD_URL}console
             )
         }
         success {
-            echo "Escaneo diario LIMPIO — sin vulnerabilidades HIGH/CRITICAL bloqueantes."
+            echo "Escaneo diario LIMPIO  - sin vulnerabilidades HIGH/CRITICAL bloqueantes."
         }
     }
 }

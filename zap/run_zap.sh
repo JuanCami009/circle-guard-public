@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# Pruebas de Seguridad — OWASP ZAP Baseline (punto 5)
+# Pruebas de Seguridad  - OWASP ZAP Baseline (punto 5)
 # Ejecuta un escaneo pasivo ZAP contra los 8 microservicios de
 # CircleGuard desplegados en Kubernetes.
 #
@@ -63,7 +63,7 @@ fail_level_to_zap_flag() {
 ZAP_LEVEL_FLAG=$(fail_level_to_zap_flag "$ZAP_FAIL_ON")
 
 echo "============================================================"
-echo "OWASP ZAP Baseline Scan — CircleGuard"
+echo "OWASP ZAP Baseline Scan  - CircleGuard"
 echo "Host: $ZAP_HOST | Nivel de fallo: $ZAP_FAIL_ON | Timeout: ${ZAP_TIMEOUT}s"
 echo "============================================================"
 
@@ -79,7 +79,7 @@ for svc in "${!SERVICES[@]}"; do
     # Verificar que el servicio responde antes de lanzar ZAP
     code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${target_url}/" || true)
     if [ "$code" = "000" ]; then
-        echo "[SKIP] ${svc} — sin respuesta en ${target_url} (servicio no disponible)"
+        echo "[SKIP] ${svc}  - sin respuesta en ${target_url} (servicio no disponible)"
         SCAN_RESULTS+=("$(printf '%-40s' "$svc")  SKIP   (puerto ${port} no responde)")
         SKIP=$((SKIP+1))
         continue
@@ -116,15 +116,15 @@ for svc in "${!SERVICES[@]}"; do
 
     # ZAP exit codes: 0 = sin alertas, 1 = advertencias, 2 = errores/alta
     if [ "$zap_exit" -eq 0 ]; then
-        echo "[PASS] ${svc} — sin alertas ${ZAP_FAIL_ON} (${elapsed}s)"
+        echo "[PASS] ${svc}  - sin alertas ${ZAP_FAIL_ON} (${elapsed}s)"
         SCAN_RESULTS+=("$(printf '%-40s' "$svc")  PASS   (sin alertas, ${elapsed}s)")
         PASS=$((PASS+1))
     elif [ "$zap_exit" -eq 1 ]; then
-        echo "[WARN] ${svc} — alertas por debajo de ${ZAP_FAIL_ON} (${elapsed}s)"
+        echo "[WARN] ${svc}  - alertas por debajo de ${ZAP_FAIL_ON} (${elapsed}s)"
         SCAN_RESULTS+=("$(printf '%-40s' "$svc")  WARN   (alertas menores, ${elapsed}s)")
         PASS=$((PASS+1))
     else
-        echo "[FAIL] ${svc} — alertas ${ZAP_FAIL_ON} encontradas (${elapsed}s) → ver ${report_html}"
+        echo "[FAIL] ${svc}  - alertas ${ZAP_FAIL_ON} encontradas (${elapsed}s) → ver ${report_html}"
         SCAN_RESULTS+=("$(printf '%-40s' "$svc")  FAIL   (alertas ${ZAP_FAIL_ON}, ${elapsed}s)")
         FAIL=$((FAIL+1))
     fi

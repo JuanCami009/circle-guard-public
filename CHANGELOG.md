@@ -23,7 +23,7 @@ y el versionado sigue [Semantic Versioning](https://semver.org/lang/es/).
   - TLS: ingress-nginx vía Helm + certificado self-signed (`hashicorp/tls`) + Ingress HTTPS.
   - Módulo Terraform `k8s-ingress/` y manifest estático `k8s/infra/19-ingress.yml`.
   - Trivy IaC Scan (stage nuevo en los 3 Jenkinsfiles): misconfig sobre `k8s/` y `terraform/`.
-  - `Jenkinsfile.security`: pipeline cron diario (H 2 * * *) — Trivy image + IaC + notificación email.
+  - `Jenkinsfile.security`: pipeline cron diario (H 2 * * *)  - Trivy image + IaC + notificación email.
   - `SPRING_LDAP_PASSWORD` añadida al `circleguard-secrets` K8s Secret y módulo `k8s-config`.
 
 ### Changed
@@ -36,7 +36,7 @@ y el versionado sigue [Semantic Versioning](https://semver.org/lang/es/).
 
 ---
 
-## [0.7.0] — 2026-06-08
+## [0.7.0]  - 2026-06-08
 
 ### Added
 
@@ -44,7 +44,7 @@ y el versionado sigue [Semantic Versioning](https://semver.org/lang/es/).
 
 ---
 
-## [Unreleased — pre-0.7.0]
+## [Unreleased  - pre-0.7.0]
 
 ### Added
 
@@ -56,7 +56,7 @@ y el versionado sigue [Semantic Versioning](https://semver.org/lang/es/).
 
 ---
 
-## [0.5.0] — 2026-06-08
+## [0.5.0]  - 2026-06-08
 
 ### Added
 
@@ -72,7 +72,7 @@ y el versionado sigue [Semantic Versioning](https://semver.org/lang/es/).
 
 ---
 
-## [0.4.0] — 2026-05-27
+## [0.4.0]  - 2026-05-27
 
 ### Added
 
@@ -87,7 +87,7 @@ y el versionado sigue [Semantic Versioning](https://semver.org/lang/es/).
 
 ---
 
-## [0.3.0] — 2026-05-26
+## [0.3.0]  - 2026-05-26
 
 ### Added
 
@@ -100,7 +100,7 @@ y el versionado sigue [Semantic Versioning](https://semver.org/lang/es/).
 
 ---
 
-## [0.2.0] — 2026-05-25
+## [0.2.0]  - 2026-05-25
 
 ### Added
 
@@ -121,7 +121,7 @@ y el versionado sigue [Semantic Versioning](https://semver.org/lang/es/).
 
 ---
 
-## [0.1.0] — 2026-05-12
+## [0.1.0]  - 2026-05-12
 
 ### Added
 

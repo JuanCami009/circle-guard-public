@@ -1,4 +1,4 @@
-# OWASP ZAP — Pruebas de Seguridad (punto 5)
+# OWASP ZAP  - Pruebas de Seguridad (punto 5)
 
 Escaneo pasivo automático de los 8 microservicios CircleGuard usando
 [OWASP ZAP Baseline](https://www.zaproxy.org/docs/docker/baseline-scan/).
@@ -15,7 +15,7 @@ Escaneo pasivo automático de los 8 microservicios CircleGuard usando
 Requiere Docker y los servicios accesibles.
 
 ```bash
-# Prod (NodePorts 300xx — defaults):
+# Prod (NodePorts 300xx  - defaults):
 bash zap/run_zap.sh
 
 # Stage (NodePorts 320xx):
@@ -80,6 +80,6 @@ IDs de reglas: https://www.zaproxy.org/docs/alerts/
 
 | Exit code ZAP | Significado | Acción |
 |---|---|---|
-| 0 | Sin alertas del nivel configurado | ✅ OK |
-| 1 | Advertencias menores (por debajo del nivel) | ⚠️ Revisar reporte |
-| 2 | Alertas del nivel configurado encontradas | ❌ Corregir o agregar a rules.tsv con justificación |
+| 0 | Sin alertas del nivel configurado | OK |
+| 1 | Advertencias menores (por debajo del nivel) | Revisar reporte |
+| 2 | Alertas del nivel configurado encontradas | Corregir o agregar a rules.tsv con justificación |

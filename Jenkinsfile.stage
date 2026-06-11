@@ -17,7 +17,7 @@ pipeline {
         // kubeconfig parcheado con host.docker.internal en lugar de 127.0.0.1
         // (el kubeconfig original del host no es accesible desde dentro del contenedor)
         KUBECONFIG                            = "${WORKSPACE}/terraform/envs/stage/kubeconfig-circleguard-stage.yaml"
-        // CI/CD avanzado — SonarQube y Trivy
+        // CI/CD avanzado  - SonarQube y Trivy
         SONAR_HOST_URL                        = 'http://host.docker.internal:9000'
         LOCALSTACK_HOST                       = 'host.docker.internal'
         TF_VAR_localstack_host                = 'host.docker.internal'
@@ -365,7 +365,7 @@ pipeline {
         // ─────────────────────────────────────────────────────────────────
         stage('Quality Gate') {
             // Espera el veredicto del Quality Gate de SonarQube vía webhook.
-            // abortPipeline: false en stage — el resultado se registra pero NO bloquea el pipeline.
+            // abortPipeline: false en stage  - el resultado se registra pero NO bloquea el pipeline.
             // Requiere: webhook en SonarQube > Administration > Webhooks apuntando a
             //           http://JENKINS_URL/sonarqube-webhook/
             steps {
@@ -445,7 +445,7 @@ pipeline {
                             ${REGISTRY}/${svc}-service:${IMAGE_TAG} || SCAN_FAIL=1
                     done
                     if [ "${TRIVY_EXIT_CODE}" = "1" ] && [ "${SCAN_FAIL}" = "1" ]; then
-                        echo "Trivy encontró vulnerabilidades HIGH/CRITICAL — bloqueando pipeline."
+                        echo "Trivy encontró vulnerabilidades HIGH/CRITICAL  - bloqueando pipeline."
                         exit 1
                     fi
                     echo "Trivy scan completado (reportes en trivy-reports/)."
@@ -515,7 +515,7 @@ pipeline {
                     sh '''
                         # Taint cluster if control-plane container is not running so terraform recreates it
                         if ! docker inspect --format "{{.State.Running}}" circleguard-stage-control-plane 2>/dev/null | grep -q "true"; then
-                            echo "==> kind cluster container not running — tainting module.cluster for recreation"
+                            echo "==> kind cluster container not running  - tainting module.cluster for recreation"
                             terraform taint -ignore-remote-version module.cluster.null_resource.cluster 2>/dev/null || true
                         fi
                     '''
@@ -545,7 +545,7 @@ pipeline {
                     echo "Ejecutando smoke tests HTTP via NodePorts..."
                     # HTTP 200, 404 o 401 indican que Spring Boot inicio correctamente.
                     # Solo HTTP 000 (connection refused) o 5xx son errores reales.
-                    # Puertos 320XX (stage) — no colisionan con prod (300XX) ni dev (310XX)
+                    # Puertos 320XX (stage)  - no colisionan con prod (300XX) ni dev (310XX)
                     for port_svc in "32085:file-service" "32087:gateway-service" "32084:dashboard-service" "32086:form-service" "32082:notification-service" "32088:promotion-service" "32180:auth-service" "32083:identity-service"; do
                         PORT=$(echo $port_svc | cut -d: -f1)
                         SVC=$(echo $port_svc  | cut -d: -f2)
@@ -563,7 +563,7 @@ pipeline {
 
         // ─────────────────────────────────────────────────────────────────
         stage('E2E Tests') {
-            // Suite E2E Karate — journeys cross-service reales contra namespace stage (320XX).
+            // Suite E2E Karate  - journeys cross-service reales contra namespace stage (320XX).
             // Journeys: A (acceso campus sano→GREEN), B (síntomas→RED), C (visitante),
             //           + suite de humo (disponibilidad 8 servicios).
             // Las variables E2E_PORT_* apuntan a los NodePorts 320XX del namespace circleguard-stage.
@@ -642,7 +642,7 @@ pipeline {
         // ─────────────────────────────────────────────────────────────────
         stage('Security Tests (OWASP ZAP)') {
             // Escaneo pasivo de seguridad con OWASP ZAP contra los 8 servicios desplegados en stage.
-            // Modo baseline (passive): no lanza ataques activos — solo analiza tráfico pasivo.
+            // Modo baseline (passive): no lanza ataques activos  - solo analiza tráfico pasivo.
             // ZAP_FAIL_ON=High: bloquea el pipeline solo si hay alertas de severidad High.
             // ZAP_PORT_* apuntan a los NodePorts 320XX del namespace circleguard-stage.
             // identity (32083) y auth (32180) usan defaults al no tener NodePort stage explícito.
@@ -679,13 +679,13 @@ pipeline {
             echo "Pipeline finalizado: ${currentBuild.currentResult}"
         }
         success {
-            echo "Stage pipeline EXITOSO — imagenes :stage desplegadas en namespace: circleguard-stage"
+            echo "Stage pipeline EXITOSO  - imagenes :stage desplegadas en namespace: circleguard-stage"
         }
         failure {
-            echo "Stage pipeline FALLIDO — revisar logs anteriores"
+            echo "Stage pipeline FALLIDO  - revisar logs anteriores"
             sh 'kind delete cluster --name circleguard-stage 2>/dev/null || true'
             emailext(
-                subject: "❌ FALLÓ ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
+                subject: "[FALLO] ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
                 body: """Pipeline de stage fallido.
 
 Job     : ${env.JOB_NAME}
@@ -699,7 +699,7 @@ Consola : ${env.BUILD_URL}console
         }
         unstable {
             emailext(
-                subject: "⚠️ INESTABLE ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
+                subject: "[INESTABLE] ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
                 body: """Pipeline de stage inestable (Quality Gate degradado o tests con advertencias).
 
 Job     : ${env.JOB_NAME}

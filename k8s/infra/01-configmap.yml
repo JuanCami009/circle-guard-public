@@ -13,7 +13,7 @@ data:
   QR_EXPIRATION: "300"
   AUTH_API_URL: "http://auth-service-svc:8180"
 
-  # Fixes de startup — evitan fallos por conexiones no disponibles al arranque
+  # Fixes de startup  - evitan fallos por conexiones no disponibles al arranque
   SPRING_KAFKA_LISTENER_MISSING_TOPICS_FATAL: "false"
   SPRING_DATA_REDIS_REPOSITORIES_ENABLED: "false"
 

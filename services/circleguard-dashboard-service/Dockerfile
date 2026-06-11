@@ -1,6 +1,6 @@
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+RUN apk upgrade --no-cache && addgroup -S appgroup && adduser -S appuser -G appgroup
 USER appuser
 COPY services/circleguard-dashboard-service/build/libs/*.jar app.jar
 EXPOSE 8084

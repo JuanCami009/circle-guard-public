@@ -5,7 +5,7 @@ variable "namespace" {
 
 variable "chart_version" {
   type        = string
-  default     = "20.6.3"
+  default     = "19.6.4"
   description = "Bitnami redis Helm chart version."
 }
 

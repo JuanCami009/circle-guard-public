@@ -40,6 +40,9 @@ pipeline {
         // ─────────────────────────────────────────────────────────────────
         stage('Prepare') {
             steps {
+                // Limpiar locks obsoletos de Gradle (quedan si un build anterior fue cancelado).
+                // disableConcurrentBuilds() garantiza que ningún otro pipeline corre ahora.
+                sh 'find /var/jenkins_home/.gradle/caches -name "*.lock" -delete 2>/dev/null || true'
                 // Descarga gradle-8.14-bin.zip una sola vez antes de los builds paralelos.
                 // Sin esto, los 6 procesos compiten por el lock del archivo y hacen timeout.
                 sh './gradlew --version --no-daemon'

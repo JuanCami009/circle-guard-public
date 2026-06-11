@@ -69,11 +69,16 @@ resource "null_resource" "cluster" {
           --format '{{.NetworkSettings.Networks.kind.IPAddress}}')
       else
         CLUSTER_IP="127.0.0.1"
+        # When running on the host (not inside Docker), kind maps the API server
+        # to a random host port — use that instead of the container-internal 6443.
+        API_PORT=$(docker inspect ${local.container_name} \
+          --format '{{(index (index .NetworkSettings.Ports "6443/tcp") 0).HostPort}}')
       fi
+      API_PORT=$${API_PORT:-6443}
 
-      # Get kubeconfig from inside the container and point server at reachable IP
+      # Get kubeconfig from inside the container and point server at reachable IP:port
       docker exec ${local.container_name} cat /etc/kubernetes/admin.conf \
-        | sed "s|server: https://127.0.0.1:6443|server: https://$${CLUSTER_IP}:6443|g" \
+        | sed "s|server: https://127.0.0.1:6443|server: https://$${CLUSTER_IP}:$${API_PORT}|g" \
         > ${local.kubeconfig_raw_path}
     EOT
   }

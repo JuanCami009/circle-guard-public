@@ -28,11 +28,11 @@ provider "aws" {
   skip_requesting_account_id  = true
   s3_use_path_style           = true
   endpoints {
-    s3             = "http://host.docker.internal:4566"
-    dynamodb       = "http://host.docker.internal:4566"
-    secretsmanager = "http://host.docker.internal:4566"
-    iam            = "http://host.docker.internal:4566"
-    sts            = "http://host.docker.internal:4566"
+    s3             = "http://${var.localstack_host}:4566"
+    dynamodb       = "http://${var.localstack_host}:4566"
+    secretsmanager = "http://${var.localstack_host}:4566"
+    iam            = "http://${var.localstack_host}:4566"
+    sts            = "http://${var.localstack_host}:4566"
   }
 }
 

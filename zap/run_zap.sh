@@ -48,16 +48,15 @@ SKIP=0
 SCAN_RESULTS=()
 SUITE_START=$(date +%s)
 
-# Convierte nivel de alerta a código de salida ZAP:
-#   -I: ignorar todas (exit 0 siempre)
-#   -l: nivel mínimo a reportar (Low/Medium/High)
-#   --exit-code 1: activado por defecto en zap-baseline
+# Convierte nivel de alerta a flag válido de zap-baseline.
+# ZAP -l acepta: PASS, IGNORE, INFO, WARN, FAIL (no Low/Medium/High).
+# WARN es el nivel de display para alertas Medium+; exit code 2 indica alertas altas.
 fail_level_to_zap_flag() {
     case "$1" in
-        Low)    echo "-l Low"    ;;
-        Medium) echo "-l Medium" ;;
-        High)   echo "-l High"   ;;
-        *)      echo "-l High"   ;;
+        Low)    echo "-l INFO" ;;
+        Medium) echo "-l WARN" ;;
+        High)   echo "-l WARN" ;;
+        *)      echo "-l WARN" ;;
     esac
 }
 

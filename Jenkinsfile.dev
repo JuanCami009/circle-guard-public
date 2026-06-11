@@ -513,6 +513,13 @@ pipeline {
             steps {
                 dir('terraform/envs/dev') {
                     sh 'terraform init -input=false'
+                    sh '''
+                        # Taint cluster if control-plane container is not running so terraform recreates it
+                        if ! docker inspect --format "{{.State.Running}}" circleguard-dev-control-plane 2>/dev/null | grep -q "true"; then
+                            echo "==> kind cluster container not running — tainting module.cluster for recreation"
+                            terraform taint -ignore-remote-version module.cluster.null_resource.cluster 2>/dev/null || true
+                        fi
+                    '''
                     sh 'terraform apply -input=false -auto-approve -target=module.cluster'
                 }
                 sh 'bash terraform/scripts/load-images.sh dev'

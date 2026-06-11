@@ -87,6 +87,7 @@ resource "kubernetes_ingress_v1" "gateway" {
     annotations = {
       "nginx.ingress.kubernetes.io/ssl-redirect"   = "true"
       "nginx.ingress.kubernetes.io/rewrite-target" = "/$2"
+      "nginx.ingress.kubernetes.io/use-regex"      = "true"
     }
   }
 
@@ -104,7 +105,7 @@ resource "kubernetes_ingress_v1" "gateway" {
       http {
         path {
           path      = "/()(.*)"
-          path_type = "Prefix"
+          path_type = "ImplementationSpecific"
 
           backend {
             service {

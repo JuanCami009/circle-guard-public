@@ -19,6 +19,8 @@ pipeline {
         KUBECONFIG                            = "${WORKSPACE}/terraform/envs/dev/kubeconfig-circleguard-dev.yaml"
         // CI/CD avanzado — SonarQube y Trivy
         SONAR_HOST_URL                        = 'http://host.docker.internal:9000'
+        LOCALSTACK_HOST                       = 'host.docker.internal'
+        TF_VAR_localstack_host                = 'host.docker.internal'
         IMAGE_TAG                             = 'dev'
         // TRIVY_EXIT_CODE=0 en dev: reporta sin bloquear ante HIGH/CRITICAL
         TRIVY_EXIT_CODE                       = '0'
@@ -41,6 +43,13 @@ pipeline {
                 // Descarga gradle-8.14-bin.zip una sola vez antes de los builds paralelos.
                 // Sin esto, los 6 procesos compiten por el lock del archivo y hacen timeout.
                 sh './gradlew --version --no-daemon'
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Start LocalStack') {
+            steps {
+                sh 'docker compose -f terraform/scripts/localstack-compose.yml up -d --no-recreate 2>/dev/null || docker compose -f terraform/scripts/localstack-compose.yml up -d'
             }
         }
 
@@ -428,6 +437,7 @@ pipeline {
                         docker run --rm \
                             -v /var/run/docker.sock:/var/run/docker.sock \
                             -v "$PWD/trivy-reports":/out \
+                            -v trivy-db-cache:/root/.cache/trivy \
                             aquasec/trivy:latest image \
                             --severity HIGH,CRITICAL \
                             --exit-code ${TRIVY_EXIT_CODE} \
@@ -462,6 +472,7 @@ pipeline {
                     docker run --rm \
                         -v "$PWD":/src \
                         -v "$PWD/trivy-reports":/out \
+                        -v trivy-db-cache:/root/.cache/trivy \
                         aquasec/trivy:latest config \
                         --severity HIGH,CRITICAL \
                         --exit-code ${TRIVY_EXIT_CODE} \
@@ -473,6 +484,7 @@ pipeline {
                     docker run --rm \
                         -v "$PWD":/src \
                         -v "$PWD/trivy-reports":/out \
+                        -v trivy-db-cache:/root/.cache/trivy \
                         aquasec/trivy:latest config \
                         --severity HIGH,CRITICAL \
                         --exit-code ${TRIVY_EXIT_CODE} \
@@ -502,11 +514,18 @@ pipeline {
             steps {
                 dir('terraform/envs/dev') {
                     sh 'terraform init -input=false'
+                    sh '''
+                        # Taint cluster if control-plane container is not running so terraform recreates it
+                        if ! docker inspect --format "{{.State.Running}}" circleguard-dev-control-plane 2>/dev/null | grep -q "true"; then
+                            echo "==> kind cluster container not running — tainting module.cluster for recreation"
+                            terraform taint -ignore-remote-version module.cluster.null_resource.cluster 2>/dev/null || true
+                        fi
+                    '''
                     sh 'terraform apply -input=false -auto-approve -target=module.cluster'
                 }
                 sh 'bash terraform/scripts/load-images.sh dev'
                 dir('terraform/envs/dev') {
-                    sh 'terraform apply -input=false -auto-approve -var="image_tag=dev"'
+                    sh 'terraform apply -input=false -auto-approve -parallelism=4 -var="image_tag=dev"'
                 }
             }
         }
@@ -559,13 +578,17 @@ pipeline {
                 withCredentials([
                     string(credentialsId: 'e2e-jwt-token',  variable: 'TEST_JWT'),
                     string(credentialsId: 'e2e-anon-id',    variable: 'TEST_ANON_ID'),
-                    string(credentialsId: 'e2e-qr-token',   variable: 'TEST_QR_TOKEN')
+                    string(credentialsId: 'e2e-qr-token',   variable: 'TEST_QR_TOKEN'),
+                    string(credentialsId: 'e2e-username',   variable: 'E2E_USERNAME'),
+                    string(credentialsId: 'e2e-password',   variable: 'E2E_PASSWORD')
                 ]) {
                     sh '''
                         E2E_HOST=host.docker.internal \
                         TEST_JWT=${TEST_JWT} \
                         TEST_ANON_ID=${TEST_ANON_ID} \
                         TEST_QR_TOKEN=${TEST_QR_TOKEN} \
+                        E2E_USERNAME=${E2E_USERNAME} \
+                        E2E_PASSWORD=${E2E_PASSWORD} \
                         ./gradlew :e2e-tests:e2eTest --no-daemon
                     '''
                 }
@@ -623,6 +646,7 @@ pipeline {
         }
         failure {
             echo "Dev pipeline FALLIDO — revisar logs anteriores"
+            sh 'kind delete cluster --name circleguard-dev 2>/dev/null || true'
             emailext(
                 subject: "❌ FALLÓ ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
                 body: """Pipeline de desarrollo fallido.

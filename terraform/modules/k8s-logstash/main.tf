@@ -39,14 +39,14 @@ resource "kubernetes_config_map_v1" "logstash_pipeline" {
 
         mutate {
           # Ensure index-friendly field names
-          add_field => { "[@metadata][index]" => "circleguard-logs-%{+YYYY.MM.dd}" }
+          add_field => { "[@metadata][index]" => "circleguard-logs-%%{+YYYY.MM.dd}" }
         }
       }
 
       output {
         elasticsearch {
           hosts     => ["${var.elasticsearch_url}"]
-          index     => "%{[@metadata][index]}"
+          index     => "%%{[@metadata][index]}"
         }
       }
     CONF
@@ -84,7 +84,7 @@ resource "kubernetes_deployment_v1" "logstash" {
 
           env {
             name  = "LS_JAVA_OPTS"
-            value = "-Xmx512m -Xms512m"
+            value = "-Xmx256m -Xms256m"
           }
 
           volume_mount {
@@ -94,8 +94,8 @@ resource "kubernetes_deployment_v1" "logstash" {
           }
 
           resources {
-            requests = { memory = "512Mi", cpu = "200m" }
-            limits   = { memory = "1Gi",  cpu = "500m" }
+            requests = { memory = "256Mi", cpu = "200m" }
+            limits   = { memory = "512Mi", cpu = "500m" }
           }
         }
 

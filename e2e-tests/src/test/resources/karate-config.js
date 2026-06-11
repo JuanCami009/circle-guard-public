@@ -44,17 +44,26 @@ function fn() {
   // Retorna { jwt: '...', anonId: '...' } o null si ninguno disponible
   config.doLogin = function(username, password) {
     if (!username || !password) return null;
-    var result = karate.call('classpath:e2e/helpers/login.feature', { username: username, password: password, baseUrlAuth: config.baseUrlAuth });
-    return result;
+    try {
+      var result = karate.call('classpath:e2e/helpers/login.feature', { username: username, password: password, baseUrlAuth: config.baseUrlAuth });
+      return result;
+    } catch (e) {
+      karate.log('[WARN] doLogin failed for ' + username + ': ' + e);
+      return null;
+    }
   };
 
   // Helper: obtener contexto autenticado (live login > fallback JWT inyectado)
+  config.isRealJwt = function(token) {
+    return token && token.length > 20 && token.indexOf('.') > 0;
+  };
+
   config.getAuthContext = function() {
     if (config.e2eUsername && config.e2ePassword) {
       var r = config.doLogin(config.e2eUsername, config.e2ePassword);
       if (r && r.jwt) return r;
     }
-    if (config.fallbackJwt && config.fallbackAnonId) {
+    if (config.isRealJwt(config.fallbackJwt) && config.fallbackAnonId && config.fallbackAnonId !== 'placeholder') {
       return { jwt: config.fallbackJwt, anonId: config.fallbackAnonId };
     }
     return null;

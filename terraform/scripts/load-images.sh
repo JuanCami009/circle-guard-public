@@ -20,6 +20,14 @@ case "$ENV" in
 esac
 
 CLUSTER="circleguard-${ENV}"
+CONTROL_PLANE="${CLUSTER}-control-plane"
+
+# Verify cluster node is running before attempting kind load
+if ! docker inspect --format "{{.State.Running}}" "${CONTROL_PLANE}" 2>/dev/null | grep -q "true"; then
+  echo "ERROR: kind cluster node '${CONTROL_PLANE}' is not running." >&2
+  echo "       Run: terraform taint module.cluster.null_resource.cluster && terraform apply -target=module.cluster" >&2
+  exit 1
+fi
 
 SERVICES=(
   auth-service

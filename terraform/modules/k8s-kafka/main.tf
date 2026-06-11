@@ -103,12 +103,22 @@ resource "kubernetes_deployment_v1" "zookeeper" {
             value = "2000"
           }
 
+          env {
+            name  = "ZOOKEEPER_HEAP_OPTS"
+            value = "-Xms64m -Xmx128m"
+          }
+
           readiness_probe {
             exec {
               command = ["nc", "-z", "localhost", "2181"]
             }
             initial_delay_seconds = 15
             period_seconds        = 10
+          }
+
+          resources {
+            requests = { memory = "128Mi", cpu = "50m" }
+            limits   = { memory = "256Mi", cpu = "200m" }
           }
         }
       }
@@ -211,6 +221,16 @@ resource "kubernetes_deployment_v1" "kafka" {
           env {
             name  = "KAFKA_AUTO_CREATE_TOPICS_ENABLE"
             value = "true"
+          }
+
+          env {
+            name  = "KAFKA_HEAP_OPTS"
+            value = "-Xms128m -Xmx256m"
+          }
+
+          resources {
+            requests = { memory = "256Mi", cpu = "100m" }
+            limits   = { memory = "512Mi", cpu = "500m" }
           }
         }
       }

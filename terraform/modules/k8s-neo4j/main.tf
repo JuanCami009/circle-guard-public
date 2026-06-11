@@ -64,11 +64,6 @@ resource "kubernetes_deployment_v1" "neo4j" {
           }
 
           env {
-            name  = "NEO4J_PLUGINS"
-            value = "[\"apoc\"]"
-          }
-
-          env {
             name  = "NEO4J_dbms_connector_bolt_listen__address"
             value = ":7687"
           }
@@ -78,15 +73,30 @@ resource "kubernetes_deployment_v1" "neo4j" {
             value = ":7687"
           }
 
+          env {
+            name  = "NEO4J_server_memory_heap_initial__size"
+            value = "128m"
+          }
+
+          env {
+            name  = "NEO4J_server_memory_heap_max__size"
+            value = "256m"
+          }
+
+          env {
+            name  = "NEO4J_server_memory_pagecache_size"
+            value = "128m"
+          }
+
           # readinessProbe: httpGet on 7474 (matches k8s/infra/04-neo4j.yml ground truth)
           readiness_probe {
             http_get {
               path = "/"
               port = 7474
             }
-            initial_delay_seconds = 30
-            period_seconds        = 10
-            failure_threshold     = 12
+            initial_delay_seconds = 60
+            period_seconds        = 15
+            failure_threshold     = 20
           }
 
           resources {

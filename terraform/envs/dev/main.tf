@@ -88,6 +88,9 @@ module "config" {
     JWT_EXPIRATION                                   = "3600000"
     QR_EXPIRATION                                    = "300"
     AUTH_API_URL                                     = "http://auth-service-svc:8180"
+    IDENTITY_SERVICE_URL                             = "http://identity-svc:8083"
+    PROMOTION_SERVICE_URL                            = "http://promotion-svc:8088"
+    SPRING_LDAP_URLS                                 = "ldap://openldap-svc:389"
     SPRING_KAFKA_LISTENER_MISSING_TOPICS_FATAL       = "false"
     SPRING_DATA_REDIS_REPOSITORIES_ENABLED           = "false"
     SPRING_MAIL_HOST                                 = "mailhog-svc"
@@ -104,6 +107,7 @@ module "config" {
     MANAGEMENT_METRICS_TAGS_APPLICATION              = "circleguard"
     MANAGEMENT_TRACING_SAMPLING_PROBABILITY          = "1.0"
     MANAGEMENT_ZIPKIN_TRACING_ENDPOINT               = "http://zipkin-svc:9411/api/v2/spans"
+    JAVA_TOOL_OPTIONS                                = "-XX:MaxRAMPercentage=50"
   }
   depends_on = [module.ns, module.secrets]
 }
@@ -127,6 +131,7 @@ module "neo4j" {
 module "kafka" {
   source     = "../../modules/k8s-kafka"
   namespace  = module.ns.name
+  use_helm   = false
   depends_on = [module.ns]
 }
 
@@ -151,30 +156,34 @@ module "mailhog" {
 
 # ── 5b. Observabilidad (Punto 7) ───────────────────────────────────────────────
 module "elasticsearch" {
+  count      = var.enable_elk ? 1 : 0
   source     = "../../modules/k8s-elasticsearch"
   namespace  = module.ns.name
   depends_on = [module.ns]
 }
 
 module "logstash" {
+  count             = var.enable_elk ? 1 : 0
   source            = "../../modules/k8s-logstash"
   namespace         = module.ns.name
-  elasticsearch_url = "http://${module.elasticsearch.host}:${module.elasticsearch.port}"
+  elasticsearch_url = "http://${module.elasticsearch[0].host}:${module.elasticsearch[0].port}"
   depends_on        = [module.elasticsearch]
 }
 
 module "kibana" {
+  count             = var.enable_elk ? 1 : 0
   source            = "../../modules/k8s-kibana"
   namespace         = module.ns.name
   nodeport_ui       = var.nodeport_base + 92
-  elasticsearch_url = "http://${module.elasticsearch.host}:${module.elasticsearch.port}"
+  elasticsearch_url = "http://${module.elasticsearch[0].host}:${module.elasticsearch[0].port}"
   depends_on        = [module.elasticsearch]
 }
 
 module "filebeat" {
+  count         = var.enable_elk ? 1 : 0
   source        = "../../modules/k8s-filebeat"
   namespace     = module.ns.name
-  logstash_host = "${module.logstash.host}:${module.logstash.beats_port}"
+  logstash_host = "${module.logstash[0].host}:${module.logstash[0].beats_port}"
   depends_on    = [module.logstash]
 }
 
@@ -206,7 +215,7 @@ module "grafana" {
   namespace         = module.ns.name
   nodeport_ui       = var.nodeport_base + 91
   prometheus_url    = "http://${module.prometheus.host}:${module.prometheus.port}"
-  elasticsearch_url = "http://${module.elasticsearch.host}:${module.elasticsearch.port}"
+  elasticsearch_url = "http://elasticsearch-svc:9200"
   zipkin_url        = "http://${module.zipkin.host}:${module.zipkin.port}"
   depends_on        = [module.prometheus, module.elasticsearch, module.zipkin]
 }
@@ -230,7 +239,7 @@ locals {
         # SPRING_LDAP_PASSWORD eliminado (Punto 8): se inyecta desde circleguard-secrets via envFrom
       }
       resources = {
-        requests = { memory = "256Mi", cpu = "100m" }
+        requests = { memory = "128Mi", cpu = "100m" }
         limits   = { memory = "512Mi", cpu = "500m" }
       }
     }
@@ -247,7 +256,7 @@ locals {
         # se inyectan desde circleguard-secrets via envFrom
       }
       resources = {
-        requests = { memory = "256Mi", cpu = "100m" }
+        requests = { memory = "128Mi", cpu = "100m" }
         limits   = { memory = "512Mi", cpu = "500m" }
       }
     }
@@ -264,8 +273,8 @@ locals {
         SPRING_DATASOURCE_URL = "jdbc:postgresql://postgres-svc:5432/circleguard_promotion"
       }
       resources = {
-        requests = { memory = "512Mi", cpu = "200m" }
-        limits   = { memory = "1Gi", cpu = "1000m" }
+        requests = { memory = "256Mi", cpu = "200m" }
+        limits   = { memory = "512Mi", cpu = "1000m" }
       }
     }
     "notification-service" = {
@@ -278,7 +287,7 @@ locals {
         SERVER_PORT = "8082"
       }
       resources = {
-        requests = { memory = "256Mi", cpu = "100m" }
+        requests = { memory = "128Mi", cpu = "100m" }
         limits   = { memory = "512Mi", cpu = "500m" }
       }
     }
@@ -291,7 +300,7 @@ locals {
         SPRING_DATASOURCE_URL = "jdbc:postgresql://postgres-svc:5432/circleguard_form"
       }
       resources = {
-        requests = { memory = "256Mi", cpu = "100m" }
+        requests = { memory = "128Mi", cpu = "100m" }
         limits   = { memory = "512Mi", cpu = "500m" }
       }
     }
@@ -303,7 +312,7 @@ locals {
         SERVER_PORT = "8085"
       }
       resources = {
-        requests = { memory = "256Mi", cpu = "100m" }
+        requests = { memory = "128Mi", cpu = "100m" }
         limits   = { memory = "512Mi", cpu = "500m" }
       }
     }
@@ -315,7 +324,7 @@ locals {
         SERVER_PORT = "8087"
       }
       resources = {
-        requests = { memory = "256Mi", cpu = "100m" }
+        requests = { memory = "128Mi", cpu = "100m" }
         limits   = { memory = "512Mi", cpu = "500m" }
       }
     }
@@ -328,7 +337,7 @@ locals {
         SPRING_DATASOURCE_URL = "jdbc:postgresql://postgres-svc:5432/circleguard_dashboard"
       }
       resources = {
-        requests = { memory = "256Mi", cpu = "100m" }
+        requests = { memory = "128Mi", cpu = "100m" }
         limits   = { memory = "512Mi", cpu = "500m" }
       }
     }

@@ -26,8 +26,8 @@ variable "resources" {
     limits   = map(string)
   })
   default = {
-    requests = { memory = "512Mi", cpu = "200m" }
-    limits   = { memory = "1Gi", cpu = "1000m" }
+    requests = { memory = "256Mi", cpu = "200m" }
+    limits   = { memory = "768Mi", cpu = "1000m" }
   }
   description = "CPU/memory resource requests and limits for the neo4j container."
 }

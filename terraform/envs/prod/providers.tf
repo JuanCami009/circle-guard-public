@@ -4,10 +4,6 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5"
     }
-    kind = {
-      source  = "kreuzwerker/kind"
-      version = "~> 0.6"
-    }
     kubernetes = {
       source  = "hashicorp/kubernetes"
       version = "~> 2"
@@ -32,15 +28,13 @@ provider "aws" {
   skip_requesting_account_id  = true
   s3_use_path_style           = true
   endpoints {
-    s3             = "http://localhost:4566"
-    dynamodb       = "http://localhost:4566"
-    secretsmanager = "http://localhost:4566"
-    iam            = "http://localhost:4566"
-    sts            = "http://localhost:4566"
+    s3             = "http://host.docker.internal:4566"
+    dynamodb       = "http://host.docker.internal:4566"
+    secretsmanager = "http://host.docker.internal:4566"
+    iam            = "http://host.docker.internal:4566"
+    sts            = "http://host.docker.internal:4566"
   }
 }
-
-provider "kind" {}
 
 provider "kubernetes" {
   host                   = module.cluster.endpoint

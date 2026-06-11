@@ -19,6 +19,8 @@ pipeline {
         KUBECONFIG                            = "${WORKSPACE}/terraform/envs/prod/kubeconfig-circleguard-prod.yaml"
         // CI/CD avanzado — SonarQube y Trivy
         SONAR_HOST_URL                        = 'http://host.docker.internal:9000'
+        LOCALSTACK_HOST                       = 'host.docker.internal'
+        TF_VAR_localstack_host                = 'host.docker.internal'
         IMAGE_TAG                             = 'latest'
         // TRIVY_EXIT_CODE=1 en prod: BLOQUEA el pipeline si encuentra HIGH/CRITICAL
         TRIVY_EXIT_CODE                       = '1'
@@ -41,6 +43,13 @@ pipeline {
                 // Descarga gradle-8.14-bin.zip una sola vez antes de los builds paralelos.
                 // Sin esto, los 6 procesos compiten por el lock del archivo y hacen timeout.
                 sh './gradlew --version --no-daemon'
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Start LocalStack') {
+            steps {
+                sh 'docker compose -f terraform/scripts/localstack-compose.yml up -d --no-recreate 2>/dev/null || docker compose -f terraform/scripts/localstack-compose.yml up -d'
             }
         }
 
@@ -427,6 +436,7 @@ pipeline {
                             -v /var/run/docker.sock:/var/run/docker.sock \
                             -v "$PWD/trivy-reports":/out \
                             -v "$PWD/.trivyignore":/.trivyignore \
+                            -v trivy-db-cache:/root/.cache/trivy \
                             aquasec/trivy:latest image \
                             --severity HIGH,CRITICAL \
                             --exit-code ${TRIVY_EXIT_CODE} \
@@ -463,6 +473,7 @@ pipeline {
                     docker run --rm \
                         -v "$PWD":/src \
                         -v "$PWD/trivy-reports":/out \
+                        -v trivy-db-cache:/root/.cache/trivy \
                         aquasec/trivy:latest config \
                         --severity HIGH,CRITICAL \
                         --exit-code ${TRIVY_EXIT_CODE} \
@@ -474,6 +485,7 @@ pipeline {
                     docker run --rm \
                         -v "$PWD":/src \
                         -v "$PWD/trivy-reports":/out \
+                        -v trivy-db-cache:/root/.cache/trivy \
                         aquasec/trivy:latest config \
                         --severity HIGH,CRITICAL \
                         --exit-code ${TRIVY_EXIT_CODE} \
@@ -566,7 +578,9 @@ pipeline {
                 withCredentials([
                     string(credentialsId: 'e2e-jwt-token',  variable: 'TEST_JWT'),
                     string(credentialsId: 'e2e-anon-id',    variable: 'TEST_ANON_ID'),
-                    string(credentialsId: 'e2e-qr-token',   variable: 'TEST_QR_TOKEN')
+                    string(credentialsId: 'e2e-qr-token',   variable: 'TEST_QR_TOKEN'),
+                    string(credentialsId: 'e2e-username',   variable: 'E2E_USERNAME'),
+                    string(credentialsId: 'e2e-password',   variable: 'E2E_PASSWORD')
                 ]) {
                     sh '''
                         E2E_HOST=host.docker.internal \
@@ -581,6 +595,8 @@ pipeline {
                         TEST_JWT=${TEST_JWT} \
                         TEST_ANON_ID=${TEST_ANON_ID} \
                         TEST_QR_TOKEN=${TEST_QR_TOKEN} \
+                        E2E_USERNAME=${E2E_USERNAME} \
+                        E2E_PASSWORD=${E2E_PASSWORD} \
                         ./gradlew :e2e-tests:e2eTest --no-daemon
                     '''
                 }
@@ -817,6 +833,7 @@ pipeline {
         }
         failure {
             echo "Master pipeline FALLIDO — revisar logs anteriores"
+            sh 'kind delete cluster --name circleguard-prod 2>/dev/null || true'
             emailext(
                 subject: "🚨 FALLÓ PRODUCCIÓN ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
                 body: """ALERTA: Pipeline de producción fallido.

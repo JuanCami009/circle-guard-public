@@ -78,6 +78,21 @@ resource "kubernetes_deployment_v1" "neo4j" {
             value = ":7687"
           }
 
+          env {
+            name  = "NEO4J_server_memory_heap_initial__size"
+            value = "128m"
+          }
+
+          env {
+            name  = "NEO4J_server_memory_heap_max__size"
+            value = "256m"
+          }
+
+          env {
+            name  = "NEO4J_server_memory_pagecache__size"
+            value = "128m"
+          }
+
           # readinessProbe: httpGet on 7474 (matches k8s/infra/04-neo4j.yml ground truth)
           readiness_probe {
             http_get {

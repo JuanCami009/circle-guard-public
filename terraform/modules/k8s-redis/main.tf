@@ -12,7 +12,7 @@ resource "helm_release" "redis" {
   namespace  = var.namespace
 
   wait    = true
-  timeout = 300
+  timeout = 600
 
   set {
     name  = "architecture"

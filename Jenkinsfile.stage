@@ -561,7 +561,9 @@ pipeline {
                 withCredentials([
                     string(credentialsId: 'e2e-jwt-token',  variable: 'TEST_JWT'),
                     string(credentialsId: 'e2e-anon-id',    variable: 'TEST_ANON_ID'),
-                    string(credentialsId: 'e2e-qr-token',   variable: 'TEST_QR_TOKEN')
+                    string(credentialsId: 'e2e-qr-token',   variable: 'TEST_QR_TOKEN'),
+                    string(credentialsId: 'e2e-username',   variable: 'E2E_USERNAME'),
+                    string(credentialsId: 'e2e-password',   variable: 'E2E_PASSWORD')
                 ]) {
                     sh '''
                         E2E_HOST=host.docker.internal \
@@ -576,6 +578,8 @@ pipeline {
                         TEST_JWT=${TEST_JWT} \
                         TEST_ANON_ID=${TEST_ANON_ID} \
                         TEST_QR_TOKEN=${TEST_QR_TOKEN} \
+                        E2E_USERNAME=${E2E_USERNAME} \
+                        E2E_PASSWORD=${E2E_PASSWORD} \
                         ./gradlew :e2e-tests:e2eTest --no-daemon
                     '''
                 }
@@ -669,6 +673,7 @@ pipeline {
         }
         failure {
             echo "Stage pipeline FALLIDO — revisar logs anteriores"
+            sh 'kind delete cluster --name circleguard-stage 2>/dev/null || true'
             emailext(
                 subject: "❌ FALLÓ ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
                 body: """Pipeline de stage fallido.

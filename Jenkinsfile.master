@@ -432,7 +432,7 @@ pipeline {
             steps {
                 sh '''
                     mkdir -p trivy-reports
-                    touch .trivyignore
+                    rm -rf .trivyignore && touch .trivyignore
                     SCAN_FAIL=0
                     for svc in file gateway dashboard form notification promotion auth identity; do
                         echo "Escaneando ${REGISTRY}/${svc}-service:${IMAGE_TAG}..."

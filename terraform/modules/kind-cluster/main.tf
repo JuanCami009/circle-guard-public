@@ -78,7 +78,7 @@ resource "null_resource" "cluster" {
 
       # Get kubeconfig from inside the container and point server at reachable IP:port
       docker exec ${local.container_name} cat /etc/kubernetes/admin.conf \
-        | sed "s|server: https://127.0.0.1:6443|server: https://$${CLUSTER_IP}:$${API_PORT}|g" \
+        | sed "s|server: https://[^:]*:6443|server: https://$${CLUSTER_IP}:$${API_PORT}|g" \
         > ${local.kubeconfig_raw_path}
     EOT
   }

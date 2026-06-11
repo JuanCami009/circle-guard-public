@@ -48,16 +48,15 @@ SKIP=0
 SCAN_RESULTS=()
 SUITE_START=$(date +%s)
 
-# Convierte nivel de alerta a código de salida ZAP:
-#   -I: ignorar todas (exit 0 siempre)
-#   -l: nivel mínimo a reportar (Low/Medium/High)
-#   --exit-code 1: activado por defecto en zap-baseline
+# Convierte nivel de alerta a flag válido de zap-baseline.
+# ZAP -l acepta: PASS, IGNORE, INFO, WARN, FAIL (no Low/Medium/High).
+# WARN es el nivel de display para alertas Medium+; exit code 2 indica alertas altas.
 fail_level_to_zap_flag() {
     case "$1" in
-        Low)    echo "-l Low"    ;;
-        Medium) echo "-l Medium" ;;
-        High)   echo "-l High"   ;;
-        *)      echo "-l High"   ;;
+        Low)    echo "-l INFO" ;;
+        Medium) echo "-l WARN" ;;
+        High)   echo "-l WARN" ;;
+        *)      echo "-l WARN" ;;
     esac
 }
 
@@ -86,30 +85,34 @@ for svc in "${!SERVICES[@]}"; do
         continue
     fi
 
-    # Construir comando ZAP
-    zap_cmd="docker run --rm \
-        --network host \
-        -v ${REPORTS_DIR}:/zap/wrk/:rw \
-        ${ZAP_IMAGE} \
-        zap-baseline.py \
-        -t ${target_url} \
-        ${ZAP_LEVEL_FLAG} \
-        -r zap-${svc}.html \
-        -J zap-${svc}.json \
-        -d"
+    # No se usa -v porque en DinD (Docker socket passthrough) el daemon del host
+    # no puede acceder a paths dentro del contenedor Jenkins.
+    # Patrón: docker create → docker cp rules → docker start → docker cp reports → docker rm
+    container_name="zap-scan-${svc}-$$"
 
-    # Incluir reglas de tuning si existe el fichero
+    zap_args="zap-baseline.py -t ${target_url} ${ZAP_LEVEL_FLAG} -r zap-${svc}.html -J zap-${svc}.json -d"
     if [ -f "$RULES_FILE" ]; then
-        # Copiar rules.tsv al directorio de reportes para que ZAP lo encuentre en /zap/wrk/
-        cp "$RULES_FILE" "${REPORTS_DIR}/rules.tsv"
-        zap_cmd="$zap_cmd -c /zap/wrk/rules.tsv"
+        zap_args="$zap_args -c /zap/wrk/rules.tsv"
+    fi
+
+    docker rm -f "${container_name}" 2>/dev/null || true
+    # shellcheck disable=SC2086
+    docker create --name "${container_name}" --network host ${ZAP_IMAGE} ${zap_args} >/dev/null
+
+    if [ -f "$RULES_FILE" ]; then
+        docker cp "$RULES_FILE" "${container_name}:/zap/wrk/rules.tsv" 2>/dev/null || true
     fi
 
     zap_exit=0
     t_start=$(date +%s)
-    timeout "${ZAP_TIMEOUT}" bash -c "$zap_cmd" || zap_exit=$?
+    timeout "${ZAP_TIMEOUT}" docker start -a "${container_name}" || zap_exit=$?
     t_end=$(date +%s)
     elapsed=$(( t_end - t_start ))
+
+    # Extraer reportes del contenedor al workspace
+    docker cp "${container_name}:/zap/wrk/zap-${svc}.html" "${REPORTS_DIR}/" 2>/dev/null || true
+    docker cp "${container_name}:/zap/wrk/zap-${svc}.json" "${REPORTS_DIR}/" 2>/dev/null || true
+    docker rm -f "${container_name}" 2>/dev/null || true
 
     # ZAP exit codes: 0 = sin alertas, 1 = advertencias, 2 = errores/alta
     if [ "$zap_exit" -eq 0 ]; then

@@ -40,6 +40,9 @@ pipeline {
         // ─────────────────────────────────────────────────────────────────
         stage('Prepare') {
             steps {
+                // Limpiar locks obsoletos de Gradle (quedan si un build anterior fue cancelado).
+                // disableConcurrentBuilds() garantiza que ningún otro pipeline corre ahora.
+                sh 'find /var/jenkins_home/.gradle/caches -name "*.lock" -delete 2>/dev/null || true'
                 // Descarga gradle-8.14-bin.zip una sola vez antes de los builds paralelos.
                 // Sin esto, los 6 procesos compiten por el lock del archivo y hacen timeout.
                 sh './gradlew --version --no-daemon'
@@ -509,11 +512,18 @@ pipeline {
             steps {
                 dir('terraform/envs/stage') {
                     sh 'terraform init -input=false'
+                    sh '''
+                        # Taint cluster if control-plane container is not running so terraform recreates it
+                        if ! docker inspect --format "{{.State.Running}}" circleguard-stage-control-plane 2>/dev/null | grep -q "true"; then
+                            echo "==> kind cluster container not running — tainting module.cluster for recreation"
+                            terraform taint -ignore-remote-version module.cluster.null_resource.cluster 2>/dev/null || true
+                        fi
+                    '''
                     sh 'terraform apply -input=false -auto-approve -target=module.cluster'
                 }
                 sh 'bash terraform/scripts/load-images.sh stage'
                 dir('terraform/envs/stage') {
-                    sh 'terraform apply -input=false -auto-approve -var="image_tag=stage"'
+                    sh 'terraform apply -input=false -auto-approve -parallelism=4 -var="image_tag=stage"'
                 }
             }
         }

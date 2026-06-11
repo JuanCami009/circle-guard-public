@@ -15,7 +15,7 @@ resource "helm_release" "kafka" {
   namespace  = var.namespace
 
   wait    = true
-  timeout = 300
+  timeout = 600
 
   set {
     name  = "kraft.enabled"
@@ -27,9 +27,28 @@ resource "helm_release" "kafka" {
     value = "true"
   }
 
+  # bitnami/kafka ≥26: brokers configured via broker.replicaCount in Zookeeper mode
   set {
-    name  = "replicaCount"
+    name  = "broker.replicaCount"
     value = tostring(var.replicas)
+  }
+
+  # Must be 0 in Zookeeper mode — controller nodes are KRaft-only
+  set {
+    name  = "controller.replicaCount"
+    value = "0"
+  }
+
+  # Disable persistence — kind clusters have no fast dynamic storage provisioner;
+  # PVC binding stalls pods and causes the 300s timeout.
+  set {
+    name  = "broker.persistence.enabled"
+    value = "false"
+  }
+
+  set {
+    name  = "zookeeper.persistence.enabled"
+    value = "false"
   }
 
   # Makes the broker headless + client service names start with "kafka-svc"

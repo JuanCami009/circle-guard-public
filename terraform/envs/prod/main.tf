@@ -127,6 +127,7 @@ module "neo4j" {
 module "kafka" {
   source     = "../../modules/k8s-kafka"
   namespace  = module.ns.name
+  use_helm   = false
   depends_on = [module.ns]
 }
 

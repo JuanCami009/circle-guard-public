@@ -35,4 +35,10 @@ resource "helm_release" "redis" {
     name  = "master.service.ports.redis"
     value = "6379"
   }
+
+  # Disable PVC — kind's default storage class is slow to provision and blocks pod start
+  set {
+    name  = "master.persistence.enabled"
+    value = "false"
+  }
 }

@@ -1,6 +1,6 @@
 plugins {
-    id("org.springframework.boot") version "3.2.4" apply false
-    id("io.spring.dependency-management") version "1.1.4" apply false
+    id("org.springframework.boot") version "3.4.5" apply false
+    id("io.spring.dependency-management") version "1.1.7" apply false
     id("org.sonarqube") version "5.1.0.4882"
     kotlin("jvm") version "1.9.24" apply false
     kotlin("plugin.spring") version "1.9.24" apply false
@@ -29,9 +29,18 @@ subprojects {
         }
     }
 
+    // Force Tomcat 10.1.55 to resolve CVEs discovered after Spring Boot 3.4.5 release
+    configurations.all {
+        resolutionStrategy {
+            force("org.apache.tomcat.embed:tomcat-embed-core:10.1.55")
+            force("org.apache.tomcat.embed:tomcat-embed-websocket:10.1.55")
+            force("org.apache.tomcat.embed:tomcat-embed-el:10.1.55")
+        }
+    }
+
     dependencies {
-        "implementation"(platform("org.springframework.boot:spring-boot-dependencies:3.2.4"))
-        "testImplementation"(platform("org.springframework.boot:spring-boot-dependencies:3.2.4"))
+        "implementation"(platform("org.springframework.boot:spring-boot-dependencies:3.4.5"))
+        "testImplementation"(platform("org.springframework.boot:spring-boot-dependencies:3.4.5"))
         "compileOnly"("org.projectlombok:lombok")
         "annotationProcessor"("org.projectlombok:lombok")
         "testCompileOnly"("org.projectlombok:lombok")

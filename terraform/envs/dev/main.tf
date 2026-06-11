@@ -104,6 +104,7 @@ module "config" {
     MANAGEMENT_METRICS_TAGS_APPLICATION              = "circleguard"
     MANAGEMENT_TRACING_SAMPLING_PROBABILITY          = "1.0"
     MANAGEMENT_ZIPKIN_TRACING_ENDPOINT               = "http://zipkin-svc:9411/api/v2/spans"
+    JAVA_TOOL_OPTIONS                                = "-XX:MaxRAMPercentage=60"
   }
   depends_on = [module.ns, module.secrets]
 }
@@ -369,7 +370,7 @@ module "services" {
   volume_mounts = each.key == "file-service" ? [{ name = "uploads", mount_path = "/app/uploads", read_only = false }] : []
   volumes       = each.key == "file-service" ? [{ name = "uploads", type = "emptyDir" }] : []
 
-  depends_on = [module.config, module.postgres, module.neo4j, module.kafka, module.redis, module.openldap, module.mailhog, module.rbac]
+  depends_on = [module.config, module.postgres, module.neo4j, module.kafka, module.redis, module.openldap, module.mailhog, module.rbac, module.elasticsearch, module.kibana, module.logstash]
 }
 
 # ── 8. Ingress-nginx + TLS (Punto 8 — Seguridad) ──────────────────────────────

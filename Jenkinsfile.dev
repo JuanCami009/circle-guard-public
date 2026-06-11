@@ -524,7 +524,7 @@ pipeline {
                 }
                 sh 'bash terraform/scripts/load-images.sh dev'
                 dir('terraform/envs/dev') {
-                    sh 'terraform apply -input=false -auto-approve -var="image_tag=dev"'
+                    sh 'terraform apply -input=false -auto-approve -parallelism=4 -var="image_tag=dev"'
                 }
             }
         }

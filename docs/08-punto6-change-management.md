@@ -31,11 +31,11 @@ CircleGuard implementa un proceso de Change Management basado en **ITIL v4 (Gest
 
 ### Tipos de cambio
 
-| Tipo | Descripción | Ruta GitFlow | Aprobación requerida |
-|---|---|---|---|
-| **Standard** | Cambio pre-aprobado, bajo riesgo. Sigue el proceso normal sin revisión adicional. | `feature/* → develop → Jenkinsfile.dev` | No (automático en dev) |
-| **Normal** | Cambio planificado con impacto en stage o producción. Requiere revisión de PR y aprobación en el pipeline. | `develop → release/* → master → Jenkinsfile.stage/master` | Sí (PR review + `Approval (Prod)` gate) |
-| **Emergency** | Hotfix urgente que no puede esperar el ciclo de release normal. | `hotfix/* → master → develop` | Sí (pipeline + verbal) |
+| Tipo | Descripción | Criterios concretos | Ruta GitFlow | Aprobación requerida |
+|---|---|---|---|---|
+| **Standard** | Cambio pre-aprobado, bajo riesgo. No requiere revisión adicional. | Cambios unicamente en `services/*/src/test/`, cambios en `docs/`, cambios en configuracion de logging, bump de version patch (X.Y.Z a X.Y.Z+1) sin CVE asociado. | `feature/* → develop → Jenkinsfile.dev` | No (automatico en dev) |
+| **Normal** | Cambio planificado con impacto en stage o produccion. Requiere revision de PR y aprobacion en el pipeline. | Cambios en `services/*/src/main/`, cambios en `k8s/`, cambios en cualquier `Jenkinsfile.*`, bump de version minor o major (X.Y o X incrementa). | `develop → release/* → master → Jenkinsfile.stage/master` | Si (PR review + gate `Approval (Prod)`) |
+| **Emergency** | Hotfix urgente que no puede esperar el ciclo de release normal. | Hotfix con incidente activo en produccion, rollback requerido por fallo critico, vulnerabilidad con CVSS >= 9.0 reportada post-deploy. | `hotfix/* → master → develop` | Si (pipeline + verbal) |
 
 ### Roles
 
@@ -83,24 +83,28 @@ Un cambio está listo para producción cuando cumple **todos** los siguientes cr
 
 - [ ] Todos los builds Java compilan sin errores (8 servicios).
 - [ ] Tests unitarios pasan al 100% (0 fallos).
-- [ ] Tests de integración pasan al 100% (0 fallos).
+- [ ] Tests de integracion pasan al 100% (0 fallos).
 - [ ] Mobile tests pasan (`npm test -- --watchAll=false`).
-- [ ] SonarQube Quality Gate en estado `OK` (o `WARN` aceptado por el aprobador).
-- [ ] Trivy no reporta vulnerabilidades `HIGH` ni `CRITICAL` sin mitigación documentada en `.trivyignore`.
+- [ ] SonarQube Quality Gate en estado `OK`. Si retorna `WARN` (no `ERROR`): se puede hacer merge pero se crea un ticket de deuda tecnica para el proximo sprint antes de proceder.
+- [ ] Trivy no reporta vulnerabilidades `HIGH` ni `CRITICAL` sin mitigacion documentada en `.trivyignore`. Cada entrada en `.trivyignore` debe incluir como minimo: el CVE-ID, la razon de aceptacion y la fecha de revision en un comentario adjunto a la linea.
 - [ ] PR revisado y aprobado por al menos un revisor en GitHub.
-- [ ] Aprobación explícita en el gate `Approval (Prod)` del pipeline de Jenkins.
+- [ ] Aprobacion explicita en el gate `Approval (Prod)` del pipeline de Jenkins.
 - [ ] Smoke Tests pasan en el namespace `circleguard` (todos los endpoints responden).
-- [ ] E2E Tests pasan (7 flujos sin errores en `run_e2e.sh`).
+- [ ] E2E Tests pasan (7 flujos sin errores en `run_e2e.sh`). Si un test E2E falla por causa flaky (timeout de red, puerto no disponible): se permite re-run hasta 2 veces. Si falla en las 3 ejecuciones consecutivas se bloquea el merge hasta que el fallo sea investigado y resuelto.
 
 ---
 
 ## 3. Planes de Rollback
 
-### Restricción de despliegue local
+### Restriccion de despliegue local
 
-Las imágenes Docker en el clúster local usan el tag `:latest` con `imagePullPolicy: Never`. Esto significa que Kubernetes **nunca descarga imágenes del registry remoto**; usa las que están cargadas localmente en el nodo. Por tanto el rollback de imágenes no es un simple swap de tag: requiere reconstruir la imagen de la versión anterior y recargarla en el nodo.
+Los manifiestos en `k8s/services/` declaran `imagePullPolicy: Never` en los contenedores principales de cada microservicio (los sidecars de soporte usan `IfNotPresent`). Con `imagePullPolicy: Never` Kubernetes nunca contacta un registry remoto: usa unicamente las imagenes presentes en el Docker daemon local del nodo. Si la imagen solicitada no existe en el nodo, el pod falla con `ErrImageNeverPull` en lugar de intentar descargarla.
 
-Adicionalmente, el pipeline de master escala todos los deployments a **0 réplicas** en el bloque `post.always` para conservar recursos del clúster local. Al restaurar desde rollback es necesario volver a escalar a 1 réplica.
+No existe TTL automatico para las imagenes locales. Las imagenes persisten en el daemon indefinidamente hasta que se ejecute un `docker image prune` o un `docker rmi` manual. Si el nodo es recreado (por ejemplo, al reiniciar el cluster kind) las imagenes se pierden y deben recargarse con `kind load docker-image`. No hay cron de limpieza configurado en el repositorio; cualquier politica de purgado debe acordarse manualmente con el equipo de operaciones antes de ejecutarla, ya que eliminar una imagen sin cargar la version anterior impide el Plan A de rollback.
+
+Por tanto el rollback de imagenes no es un simple swap de tag: requiere reconstruir la imagen de la version anterior y recargarla en el nodo (Plan B).
+
+Adicionalmente, el pipeline de master escala todos los deployments a **0 replicas** en el bloque `post.always` para conservar recursos del cluster local. Al restaurar desde rollback es necesario volver a escalar a 1 replica.
 
 ### Tabla de escenarios de rollback
 

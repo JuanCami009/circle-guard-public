@@ -121,8 +121,8 @@ Las pruebas unitarias validan componentes individuales en completo aislamiento: 
 
 | Test | Comportamiento validado |
 |---|---|
-| `shouldPurgeEncountersOlderThan14Days` | Verifica que `purgeStaleEncounters()` recibe un `threshold` dentro del rango esperado (± tolerancia de ejecución) |
-| `shouldNotThrowWhenRepositoryReturnsNull` | El método maneja `null` retornado por el repositorio sin NullPointerException |
+| `shouldPurgeEncountersOlderThan14Days` | Verifica que `purgeStaleEncounters()` recibe un `threshold` dentro del rango `[before - FOURTEEN_DAYS_MS, after - FOURTEEN_DAYS_MS]`, donde `FOURTEEN_DAYS_MS = 1_209_600_000` ms (constante definida en la linea 20 del test) y `before`/`after` son timestamps capturados antes y despues de la llamada al metodo bajo prueba |
+| `shouldNotThrowWhenRepositoryReturnsNull` | El metodo maneja `null` retornado por el repositorio sin NullPointerException |
 | `shouldHandleRepositoryExceptionGracefully` | Una `RuntimeException` del repositorio es capturada internamente - el scheduler no propaga excepciones |
 
 ```java
@@ -1068,55 +1068,60 @@ El Flujo 1 usa `check_alive`, que acepta cualquier respuesta HTTP distinta de `0
 
 #### Resultado del run de referencia (2026-05-06, 50 usuarios, 60 s)
 
+Datos extraidos del archivo `locust/locust-stats_stats.csv` generado por el run archivado en Jenkins:
+
 ```
-Peticiones totales : 1609
-Fallos (5xx)       : 60
-Tasa de errores    : 3.7%
-RPS promedio       : 28.8
+Peticiones totales : 1636
+Fallos Locust      : 518  (Locust cuenta como fallo cualquier respuesta no-2xx)
+RPS total          : 27.7
 Latencia p50       : 3 ms
 Latencia p95       : 8 ms
-Latencia p99       : 17 ms
+Latencia p99       : 15 ms
 
-Veredicto SLA (p95<500ms, <1% 5xx) : REPROBADO
+Veredicto SLA (p95<500ms, <1% 5xx reales) : PARCIAL (ver interpretacion)
 ```
 
-#### Desglose por endpoint
+#### Desglose por endpoint (fuente: `locust/locust-stats_stats.csv`)
 
-| Endpoint | Req | Fallos | p50 | p95 | p99 | Estado |
+| Endpoint | Req | Fallos Locust | p50 | p95 | p99 | Causa del fallo |
 |---|---|---|---|---|---|---|
-| `POST /api/v1/gate/validate` | 1091 | 0 | 3 ms | 8 ms | 17 ms | OK |
-| `GET /api/v1/health/status/{id}` | 372 | 0 | 3 ms | 8 ms | 27 ms | OK |
-| `POST /api/v1/surveys` | 47 | 0 | 4 ms | 10 ms | 76 ms | OK |
-| `GET /api/v1/questionnaires` | 21 | 0 | 3 ms | 7 ms | 10 ms | OK |
-| `GET /api/v1/analytics/summary` | 12 | 0 | 3 ms | 11 ms | 11 ms | OK |
-| `GET /api/v1/analytics/heatmap` | 6 | 0 | 5 ms | 13 ms | 13 ms | OK |
-| `GET /actuator/health` | 60 | 60 | 3 ms | 9 ms | 19 ms | FALLO |
+| `POST /api/v1/gate/validate` | 1118 | 0 | 3 ms | 8 ms | 14 ms | Sin fallos |
+| `GET /api/v1/health/status/[anonymousId]` | 359 | 359 | 3 ms | 8 ms | 12 ms | 401/403: endpoint protegido, sin JWT en el escenario |
+| `POST /api/v1/surveys` | 42 | 42 | 3 ms | 9 ms | 93 ms | 401/403: endpoint protegido, sin JWT en el escenario |
+| `GET /api/v1/questionnaires` | 21 | 21 | 3 ms | 6 ms | 7 ms | 401/403: endpoint protegido, sin JWT en el escenario |
+| `GET /api/v1/analytics/summary` | 11 | 11 | 4 ms | 21 ms | 21 ms | 401/403: endpoint protegido, sin JWT en el escenario |
+| `GET /api/v1/analytics/heatmap` | 6 | 6 | 4 ms | 8 ms | 8 ms | 401/403: endpoint protegido, sin JWT en el escenario |
+| `GET /actuator/health` | 79 | 79 | 3 ms | 10 ms | 93 ms | 404: promotion-service no expone el actuator (ver abajo) |
 
-#### Interpretación del veredicto "REPROBADO"
+#### Interpretacion del veredicto
 
-Los **60 fallos** provienen exclusivamente de `GET /actuator/health` en el puerto 31088 (promotion-service), que devuelve **HTTP 404**. Esto indica que promotion-service no expone el endpoint `/actuator/health` o lo expone en una ruta distinta (el arranque es correcto, pero la gestión del actuator está deshabilitada o reubicada en este servicio).
+Los **518 fallos** que Locust reporta no representan errores del servidor (5xx). Se dividen en dos categorias:
 
-**Todos los endpoints de negocio tienen 0 fallos y latencias por debajo de los umbrales.** El veredicto REPROBADO del SLA se debe únicamente al actuator, no a degradación de rendimiento.
+1. **401/403 en endpoints protegidos (439 fallos)**: `HealthStatusUser`, `SurveySubmissionUser` y `DashboardAnalyticsUser` ejecutan sus requests sin cabecera `Authorization`. Spring Security rechaza con 401 o 403. El servicio funciona correctamente: rechaza accesos no autenticados como debe. Locust cuenta cualquier respuesta no-2xx como fallo, lo que infla artificialmente la tasa de error reportada.
 
-Opciones de resolución:
+2. **404 en `/actuator/health` (79 fallos)**: promotion-service no tiene ninguna clave `management.*` en `services/circleguard-promotion-service/src/main/resources/application.yml`, por lo que Spring Boot no registra el endpoint `/actuator/health` y responde 404 en el puerto 8088. Los demas servicios si tienen el actuator habilitado.
+
+**El unico endpoint sin fallos y con autenticacion configurada en el escenario es `POST /api/v1/gate/validate`**, que es el mas critico (1118 requests, 0 fallos, p95 = 8 ms). Las latencias de todos los endpoints estan muy por debajo de los umbrales SLA independientemente del codigo de respuesta.
+
+Opciones de resolucion:
 1. **Eliminar el actuator check del escenario de carga** en `HealthStatusUser.get_health_actuator()` - los servicios ya se verifican como activos en el E2E (Flujo 1).
-2. **Habilitar el actuator en promotion-service** añadiendo `management.endpoints.web.exposure.include=health` a su `application.yml`.
+2. **Habilitar el actuator en promotion-service** anadiendo la propiedad `management.endpoints.web.exposure.include=health` al archivo `services/circleguard-promotion-service/src/main/resources/application.yml`. Ese archivo actualmente no contiene ninguna clave `management.*` (verificado en las 40 lineas del archivo), por lo que el endpoint `/actuator/health` no esta registrado y Spring Boot responde 404 en el puerto 8088.
 
-#### Análisis de rendimiento real: los endpoints de negocio
+#### Analisis de rendimiento real: los endpoints de negocio
 
-Con el actuator excluido del análisis, el rendimiento real del sistema es:
+Con el actuator excluido del analisis, el rendimiento real del sistema segun `locust/locust-stats_stats.csv` (fila `Aggregated`) es:
 
-| Métrica | Valor obtenido | Umbral aceptable | Evaluación |
+| Metrica | Valor obtenido (CSV) | Umbral aceptable | Evaluacion |
 |---|---|---|---|
-| RPS sostenido | 28.8 req/s | > 20 RPS | Cumple |
+| RPS sostenido | 27.7 req/s | > 20 RPS | Cumple |
 | Latencia p50 (global) | 3 ms | < 200 ms | Muy por debajo |
 | Latencia p95 (global) | 8 ms | < 500 ms | Muy por debajo |
-| Latencia p99 (global) | 17 ms | < 1000 ms | Cumple |
-| Fallos 5xx en negocio | 0 | < 1% | 0% |
+| Latencia p99 (global) | 15 ms | < 1000 ms | Cumple |
+| Fallos 5xx reales en negocio | 0 | < 1% | 0% |
 
-#### Outlier observado: spike de 214 ms en gateway-service
+#### Outlier observado: spike en gateway-service durante ramp-up
 
-El p99.9 de `POST /api/v1/gate/validate` llega a **210 ms** mientras el p95 es de 8 ms. Este spike ocurre en las primeras iteraciones durante el **ramp-up** (JVM cold start + inicialización de pool Redis). Una vez los 25 usuarios gateway están activos y el pool de conexiones está caliente, la latencia estabiliza a 3–5 ms. En producción, con pods pre-calentados, este outlier no aparecería.
+Segun `locust/locust-stats_stats.csv`, el p99.9 de `POST /api/v1/gate/validate` llega a **100 ms** y el maximo registrado es **110 ms**, mientras el p95 es de 8 ms. Este spike ocurre en las primeras iteraciones durante el ramp-up (JVM cold start + inicializacion del pool Redis). Una vez los 25 usuarios gateway estan activos y el pool de conexiones esta caliente, la latencia estabiliza a 3-5 ms. En produccion, con pods pre-calentados, este outlier no apareceria.
 
 #### Umbrales de referencia
 
@@ -1143,7 +1148,7 @@ El reporte generado en `locust/locust-report.html` incluye:
 
 - **Tabla de peticiones**: número de peticiones, fallos, latencias (mediana, 95p, 99p, máximo), RPS.
 - **Gráfica de RPS en el tiempo**: permite detectar degradación bajo carga sostenida o estabilidad post-ramp.
-- **Gráfica de tiempos de respuesta**: identifica outliers y degradación progresiva (como el spike de 214 ms).
+- **Grafica de tiempos de respuesta**: identifica outliers y degradacion progresiva (como el spike de 100 ms en el ramp-up de gateway-service).
 - **Gráfica de usuarios activos**: confirma que el ramp-up de 5 usuarios/segundo fue correcto y alcanzó los 50 usuarios en ~10 segundos.
 
 #### Qué revisar si los umbrales se superan en el futuro

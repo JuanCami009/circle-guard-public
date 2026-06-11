@@ -12,7 +12,7 @@ Este documento describe las capacidades de Observabilidad y Monitoreo implementa
 | **Alertas para situaciones críticas** | Implementado | Prometheus `alert.rules.yml` + Alertmanager → MailHog SMTP (`k8s/infra/11-alertmanager.yml`) |
 | **Tracing distribuido** | Implementado | Zipkin (`terraform/modules/k8s-zipkin/` · `k8s/infra/16-zipkin.yml`) + `micrometer-tracing-bridge-brave` |
 | **Health checks + readiness/liveness probes** | Implementado | Spring Actuator HTTP probes en `terraform/modules/k8s-microservice/main.tf` + `k8s/services/09-16-*.yml` |
-| **Métricas de negocio y técnicas** | Implementado | Micrometer custom Counters en 4 servicios + métricas JVM/HTTP automáticas |
+| **Métricas de negocio y técnicas** | Implementado | Micrometer custom Counters en 8 servicios + métricas JVM/HTTP automáticas |
 
 ---
 
@@ -202,15 +202,17 @@ MANAGEMENT_ZIPKIN_TRACING_ENDPOINT      = "http://zipkin-svc:9411/api/v2/spans"
 
 ### Reglas de Prometheus
 
-Definidas en `alert.rules.yml` (ConfigMap de Prometheus):
+Definidas en `alert.rules.yml` dentro del ConfigMap `prometheus-config` en `k8s/infra/10-prometheus.yml` (lineas 75-133):
 
-| Alerta | Condición | Severidad | Ventana |
+| Alerta | Expresion PromQL exacta | Severidad | Ventana |
 |---|---|---|---|
 | `ServiceDown` | `up == 0` | critical | 1 m |
-| `HighErrorRate` | ratio HTTP 5xx > 5 % | warning | 5 m |
-| `HighLatencyP99` | p99 > 1 s | warning | 5 m |
-| `HighJvmHeapUsage` | `jvm_memory_used / jvm_memory_max > 0.9` | warning | 5 m |
-| `NoHealthStatusUpdates` | `rate(circleguard_health_status_updates_total[15m]) == 0` | warning | 15 m |
+| `HighErrorRate` | `rate(http_server_requests_seconds_count{outcome="SERVER_ERROR"}[5m]) / rate(http_server_requests_seconds_count[5m]) > 0.05` | warning | 5 m |
+| `HighLatencyP99` | `histogram_quantile(0.99, rate(http_server_requests_seconds_bucket[5m])) > 1.0` | warning | 5 m |
+| `HighJvmHeapUsage` | `jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"} > 0.90` | warning | 5 m |
+| `NoHealthStatusUpdates` | `increase(circleguard_health_status_updates_total[1h]) == 0` | info | 0 m (inmediata) |
+
+**Justificacion de ventanas temporales:** `ServiceDown` usa `for: 1m` porque un pod caido es un incidente inmediato que no admite espera. Las demas alertas usan `for: 5m` para filtrar spikes transitorios que se autocorrigen (GC pause, connection pool momentaneamente lleno) y evitar falsos positivos que generen alert fatigue. `NoHealthStatusUpdates` evalua una ventana de acumulacion de 1 hora con `increase()`, por lo que no necesita un periodo de espera adicional (`for: 0m`).
 
 ### Alertmanager → MailHog
 
@@ -264,19 +266,21 @@ Con `spring-boot-starter-actuator` y las variables de entorno de la sección 1, 
 
 Todos los manifests de servicios (`k8s/services/09-*.yml` … `16-*.yml`) y el módulo terraform genérico (`terraform/modules/k8s-microservice/main.tf`) usan probes HTTP en lugar de `tcpSocket`:
 
+Valores exactos tomados de `k8s/services/15-auth-service.yml` (lineas 35-55), identicos en los 8 manifests de servicio:
+
 ```yaml
 startupProbe:
   httpGet:
     path: /actuator/health/liveness
-    port: 8087   # puerto del servicio
+    port: 8180
   initialDelaySeconds: 20
   periodSeconds: 5
-  failureThreshold: 30   # 2.5 min máximo para arrancar
+  failureThreshold: 30
 
 livenessProbe:
   httpGet:
     path: /actuator/health/liveness
-    port: 8087
+    port: 8180
   periodSeconds: 10
   failureThreshold: 3
   timeoutSeconds: 5
@@ -284,11 +288,13 @@ livenessProbe:
 readinessProbe:
   httpGet:
     path: /actuator/health/readiness
-    port: 8087
+    port: 8180
   periodSeconds: 5
   failureThreshold: 6
   timeoutSeconds: 3
 ```
+
+**Justificacion de `startupProbe.failureThreshold: 30` con `periodSeconds: 5`:** el tiempo maximo de arranque es 20s (`initialDelaySeconds`) + 30 x 5s = 170 segundos totales. Spring Boot con carga de contexto de Neo4j + Redis + Kafka puede tardar hasta 90 segundos en ambientes con poca RAM (se observo en entorno kind con 4 GB compartidos entre todos los pods). Sin `startupProbe`, `livenessProbe` mataria el pod antes de que termine de arrancar; con `failureThreshold: 30` el kubelet espera hasta 170 segundos antes de declararlo fallido. Una vez que `startupProbe` pasa, `livenessProbe` toma el control con un umbral mucho mas estricto (`failureThreshold: 3`, es decir 30 segundos) para detectar bloqueos en tiempo de ejecucion.
 
 ---
 
@@ -310,14 +316,18 @@ Con `micrometer-registry-prometheus` activo, Spring Boot registra automáticamen
 
 ### Métricas de negocio (custom)
 
-Implementadas con `Counter.builder(...).register(meterRegistry)` en 4 servicios:
+Implementadas con `Counter.builder(...).register(meterRegistry)` en 8 servicios. Archivos fuente verificados:
 
-| Métrica | Servicio | Archivo | Descripción |
+| Métrica | Tag(s) | Servicio | Archivo |
 |---|---|---|---|
-| `circleguard_logins_total{result=success\|failure}` | auth-service | `LoginController.java` | Intentos de login por resultado |
-| `circleguard_surveys_submitted_total` | form-service | `HealthSurveyService.java` | Encuestas de salud enviadas |
-| `circleguard_health_status_updates_total{status}` | promotion-service | `HealthStatusService.java` | Cambios de estado de salud por tipo |
-| `circleguard_notifications_sent_total{channel,result}` | notification-service | `ExposureNotificationListener.java` | Notificaciones despachadas |
+| `circleguard_logins_total` | `result=success\|failure` | auth-service | `services/circleguard-auth-service/src/main/java/com/circleguard/auth/controller/LoginController.java` |
+| `circleguard_surveys_submitted_total` | (sin tags) | form-service | `services/circleguard-form-service/src/main/java/com/circleguard/form/service/HealthSurveyService.java` |
+| `circleguard_health_status_updates_total` | `status` | promotion-service | `services/circleguard-promotion-service/src/main/java/com/circleguard/promotion/service/HealthStatusService.java` |
+| `circleguard_notifications_sent_total` | `channel`, `result` | notification-service | `services/circleguard-notification-service/src/main/java/com/circleguard/notification/service/ExposureNotificationListener.java` |
+| `circleguard_gate_validations_total` | `result=granted\|denied` | gateway-service | `services/circleguard-gateway-service/src/main/java/com/circleguard/gateway/controller/GateController.java` |
+| `circleguard_identity_mappings_total` | (sin tags) | identity-service | `services/circleguard-identity-service/src/main/java/com/circleguard/identity/service/IdentityVaultService.java` |
+| `circleguard_file_uploads_total` | `result=success\|failure` | file-service | `services/circleguard-file-service/src/main/java/com/circleguard/file/controller/FileUploadController.java` |
+| `circleguard_dashboard_queries_total` | `endpoint=trends\|health-board\|summary\|department\|time-series` | dashboard-service | `services/circleguard-dashboard-service/src/main/java/com/circleguard/dashboard/controller/AnalyticsController.java` |
 
 **Ejemplo de consulta PromQL para el dashboard de negocio:**
 
@@ -440,6 +450,10 @@ curl http://localhost:30093/api/v2/services
 | `services/circleguard-form-service/.../HealthSurveyService.java` | Counter `circleguard_surveys_submitted_total` |
 | `services/circleguard-promotion-service/.../HealthStatusService.java` | Counter `circleguard_health_status_updates_total` |
 | `services/circleguard-notification-service/.../ExposureNotificationListener.java` | Counter `circleguard_notifications_sent_total` |
+| `services/circleguard-gateway-service/.../GateController.java` | Counter `circleguard_gate_validations_total` |
+| `services/circleguard-identity-service/.../IdentityVaultService.java` | Counter `circleguard_identity_mappings_total` |
+| `services/circleguard-file-service/.../FileUploadController.java` | Counter `circleguard_file_uploads_total` |
+| `services/circleguard-dashboard-service/.../AnalyticsController.java` | Counter `circleguard_dashboard_queries_total` |
 
 ### Creados
 

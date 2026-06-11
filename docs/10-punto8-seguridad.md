@@ -93,6 +93,12 @@ Comportamiento por ambiente:
 | stage | `0` | Reporta sin bloquear |
 | prod (master) | `1` | Bloquea si HIGH/CRITICAL |
 
+El riesgo de aceptar HIGH/CRITICAL en dev y stage esta mitigado por tres controles complementarios:
+
+1. `Jenkinsfile.security` ejecuta un scan diario independiente a las 2am (`H 2 * * *`) y notifica por email a `devops@circleguard.local` si detecta vulnerabilidades, sin importar si hubo builds ese dia.
+2. Los reportes HTML generados por cada scan se archivan como artefactos en Jenkins y son revisables en cualquier momento desde la interfaz web.
+3. El pipeline `master` (produccion) si bloquea con `exit-code=1`, por lo que ningun codigo con vulnerabilidades HIGH/CRITICAL conocidas llega a prod sin revision explicita via `.trivyignore` (cada entrada debe incluir comentario de justificacion).
+
 ### Pipeline programado (`Jenkinsfile.security`)
 
 Corre automáticamente cada noche (`H 2 * * *`). Ejecuta ambos tipos de escaneo independientemente del estado de despliegue, asegurando detección continua incluso sin nuevos builds:
@@ -128,25 +134,34 @@ sequenceDiagram
 
 ### Secretos gestionados
 
-`terraform/modules/k8s-config/main.tf` materializa el Secret `circleguard-secrets` con 15 claves (14 originales + `SPRING_LDAP_PASSWORD` añadida en Punto 8):
+`terraform/modules/k8s-config/main.tf` materializa el Secret `circleguard-secrets` con 15 claves. En el manifest estatico `k8s/infra/02-secrets.yml` los valores por defecto son para entorno local/kind (base64 de cadenas de desarrollo, no de produccion):
 
-| Clave | Origen |
-|---|---|
-| `POSTGRES_USER` / `POSTGRES_PASSWORD` | `secrets["postgres"]` |
-| `SPRING_DATASOURCE_USERNAME/PASSWORD` | `secrets["postgres"]` |
-| `SPRING_NEO4J_AUTHENTICATION_*` | `secrets["neo4j"]` |
-| `JWT_SECRET` / `QR_SECRET` | `secrets["jwt"]` |
-| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` | `secrets["twilio"]` |
-| `VAULT_SECRET` / `VAULT_SALT` / `VAULT_HASH_SALT` | `secrets["vault"]` |
-| `LDAP_ADMIN_PASSWORD` | `secrets["ldap"]` |
-| `SPRING_LDAP_PASSWORD` | `secrets["ldap"]` ← **nuevo Punto 8** |
+| Clave | Secret Manager origen | Servicios consumidores | Valor dev (base64 decode) |
+|---|---|---|---|
+| `POSTGRES_USER` | `secrets["postgres"]` | `postgres`, `auth-service`, `identity-service`, `promotion-service`, `form-service`, `file-service` | `admin` |
+| `POSTGRES_PASSWORD` | `secrets["postgres"]` | mismo conjunto anterior | `password` |
+| `SPRING_DATASOURCE_USERNAME` | `secrets["postgres"]` | todos los microservicios con Postgres | `admin` |
+| `SPRING_DATASOURCE_PASSWORD` | `secrets["postgres"]` | todos los microservicios con Postgres | `password` |
+| `SPRING_NEO4J_AUTHENTICATION_USERNAME` | `secrets["neo4j"]` | `identity-service` | `neo4j` |
+| `SPRING_NEO4J_AUTHENTICATION_PASSWORD` | `secrets["neo4j"]` | `identity-service` | `password` |
+| `JWT_SECRET` | `secrets["jwt"]` | `auth-service`, `gateway-service` | `my-super-secret-dev-key-32-chars-long-12345678` |
+| `QR_SECRET` | `secrets["jwt"]` | `auth-service` | `my-qr-secret-key-for-dev-1234567890` |
+| `TWILIO_ACCOUNT_SID` | `secrets["twilio"]` | `notification-service` | `dev_placeholder` |
+| `TWILIO_AUTH_TOKEN` | `secrets["twilio"]` | `notification-service` | `dev_placeholder` |
+| `LDAP_ADMIN_PASSWORD` | `secrets["ldap"]` | `openldap` (configuracion inicial) | - |
+| `SPRING_LDAP_PASSWORD` | `secrets["ldap"]` | `auth-service` ← **nuevo Punto 8** | `admin` |
+| `VAULT_SECRET` | `secrets["vault"]` | `identity-service` | `my-vault-secret-key-32-chars-1234` |
+| `VAULT_SALT` | `secrets["vault"]` | `identity-service` | `deadbeef` |
+| `VAULT_HASH_SALT` | `secrets["vault"]` | `identity-service` | `12345678` |
+
+Los valores por defecto del entorno local provienen de `k8s/infra/02-secrets.yml` (base64 hardcodeado para kind). En Terraform, los valores reales se inyectan desde `terraform.tfvars` de cada `envs/{dev,stage,prod}/` hacia AWS Secrets Manager LocalStack, desde donde `k8s-config` los lee y materializa el Secret.
 
 ### Correcciones aplicadas en Punto 8
 
 **Antes (inseguro):** `auth-service` y `identity-service` tenían secretos duplicados en `extra_env` inline, evadiendo el Secret:
 
 ```hcl
-# ❌ Antes - valor en texto plano en el Deployment
+# Antes - valor en texto plano en el Deployment
 extra_env = {
   SPRING_LDAP_PASSWORD = "admin"          # auth-service
   VAULT_SECRET         = "my-vault-..."   # identity-service
@@ -158,7 +173,7 @@ extra_env = {
 **Después (seguro):** eliminados del `extra_env`. Los valores llegan vía `envFrom: secretRef: circleguard-secrets`:
 
 ```hcl
-# ✅ Después - secretos en el K8s Secret, inyectados por envFrom
+# Despues - secretos en el K8s Secret, inyectados por envFrom
 extra_env = {
   SERVER_PORT           = "8180"
   SPRING_DATASOURCE_URL = "jdbc:postgresql://postgres-svc:5432/circleguard_auth"
@@ -240,10 +255,25 @@ spec {
 
 ### Roles namespaced
 
-| Role | Permisos | Propósito |
+#### `circleguard-developer` (solo lectura)
+
+Permite a operadores y SREs inspeccionar el cluster sin ningun permiso de escritura. Justifica el principio de menor privilegio: no puede crear, modificar ni borrar ningun recurso.
+
+| `apiGroups` | `resources` | `verbs` |
 |---|---|---|
-| `circleguard-developer` | `get/list/watch` sobre pods, logs, services, configmaps, deployments | Operadores/SREs inspeccionan el cluster sin permisos de escritura |
-| `circleguard-ci-deployer` | CRUD sobre deployments, services, configmaps, pods | Pipeline Jenkins aplica manifests con privilegio mínimo (sin `cluster-admin`) |
+| `""` (core) | `pods`, `pods/log`, `services`, `configmaps`, `endpoints` | `get`, `list`, `watch` |
+| `"apps"` | `deployments`, `replicasets` | `get`, `list`, `watch` |
+
+#### `circleguard-ci-deployer` (gestion de despliegues para Jenkins)
+
+Otorga a la SA `ci-deployer` los permisos minimos para que el pipeline aplique manifests sin necesitar `cluster-admin`. Excluye deliberadamente `secrets`, `ingresses`, `namespaces` y cualquier recurso de cluster-scope.
+
+| `apiGroups` | `resources` | `verbs` |
+|---|---|---|
+| `""` (core) | `services`, `configmaps`, `pods`, `pods/log` | `get`, `list`, `watch`, `create`, `update`, `patch`, `delete` |
+| `"apps"` | `deployments`, `replicasets` | `get`, `list`, `watch`, `create`, `update`, `patch`, `delete` |
+
+Ambos Roles son `kind: Role` (namespaced), no `ClusterRole`. Su alcance esta limitado al namespace `circleguard` (o `circleguard-dev` / `circleguard-stage` segun el ambiente). Fuente: `k8s/infra/18-rbac.yml` lineas 104-144 y `terraform/modules/k8s-rbac/main.tf` lineas 54-111.
 
 ---
 
@@ -284,7 +314,9 @@ resource "helm_release" "ingress_nginx" {
 
 ### Certificado TLS self-signed
 
-Generado por el provider `hashicorp/tls` directamente en Terraform. CN `circleguard.local`, validez 365 días:
+Generado por el provider `hashicorp/tls` directamente en Terraform. CN `circleguard.local`, validez 365 dias:
+
+**Politica de rotacion:** En este entorno academico/local, la rotacion se realiza manualmente ejecutando `terraform apply` en `terraform/envs/*/`, que regenera el certificado via el resource `tls_self_signed_cert` de `hashicorp/tls`. Terraform detecta que el certificado existente ha expirado (o que el recurso fue destruido con `terraform destroy`) y genera un nuevo par clave/certificado, actualizando el Secret `circleguard-tls` en Kubernetes automaticamente. En produccion real se reemplazaria por cert-manager con Let's Encrypt o una CA corporativa, eliminando la intervencion manual y garantizando rotacion automatica antes del vencimiento.
 
 ```hcl
 resource "tls_private_key" "circleguard" { algorithm = "RSA"; rsa_bits = 2048 }

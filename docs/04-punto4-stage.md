@@ -15,7 +15,7 @@ El pipeline replica la estructura completa del pipeline de desarrollo (Punto 2) 
 | 5 | Integration Tests | Paralelo | 8 | 6 servicios con tests reales; `promotion-service` omitido (Docker Desktop) |
 | 6 | Docker Build `:stage` | Paralelo | 8 | `docker build`, tag `:stage` |
 | 7 | Deploy Stage | Secuencial | 8 + infra | `kubectl apply` con `sed` para namespace, imagen y NodePorts |
-| 8 | Smoke Tests | Secuencial | 8 | `curl` a `host.docker.internal` NodePorts 32082–32088, 32083, 32180 |
+| 8 | Smoke Tests | Secuencial | 8 | `curl` a `host.docker.internal` NodePorts 32082-32088, 32083, 32180 |
 | 9 | E2E Tests | Secuencial | 6 | `run_e2e.sh` con `E2E_PORT_*=320XX` |
 | 10 | Performance Tests | Secuencial | 4 | Locust con `LOCUST_HOST_*` apuntando a 320XX |
 
@@ -53,7 +53,7 @@ El entorno stage se despliega en el namespace `circleguard-stage`, aislado tanto
 | NodePorts infra | NodePort (Neo4j, MailHog) | ClusterIP | ClusterIP |
 | Manifests base | `k8s/infra/` + `k8s/services/` | Mismos, transformados con `sed` | Mismos, transformados con `sed` |
 
-Los NodePorts del rango 320XX son válidos dentro del rango permitido por Kubernetes (30000–32767), garantizando que no se requiere ninguna configuración adicional del clúster.
+Los NodePorts del rango 320XX son válidos dentro del rango permitido por Kubernetes (30000-32767), garantizando que no se requiere ninguna configuración adicional del clúster.
 
 ### 1.2 Crear el manifest del namespace stage
 
@@ -117,7 +117,7 @@ Para que las herramientas de testing existentes puedan apuntar a cualquier entor
 
 ### 3.1 `e2e/run_e2e.sh` - variables de puerto por servicio
 
-**Problema:** El script E2E tenía los puertos 31082–31088 (entorno dev) hardcodeados en cada `curl`. Para que el pipeline stage apunte a los puertos 32082–32088, era necesario parametrizarlos sin romper el pipeline dev existente.
+**Problema:** El script E2E tenía los puertos 31082-31088 (entorno dev) hardcodeados en cada `curl`. Para que el pipeline stage apunte a los puertos 32082-32088, era necesario parametrizarlos sin romper el pipeline dev existente.
 
 **Solución:** Agregar seis variables de entorno con los puertos dev como valor por defecto, inmediatamente después de las variables de credenciales:
 
@@ -140,7 +140,7 @@ check_alive "notification-service" "http://$HOST:31082/api/v1/notifications"
 check_alive "notification-service" "http://$HOST:$PORT_NOTIFICATION/api/v1/notifications"
 ```
 
-**Uso desde Jenkinsfile.dev (sin cambios):** `bash e2e/run_e2e.sh` - usa los defaults 31082–31088.
+**Uso desde Jenkinsfile.dev (sin cambios):** `bash e2e/run_e2e.sh` - usa los defaults 31082-31088.
 
 **Uso desde Jenkinsfile.stage:**
 ```bash
@@ -176,7 +176,7 @@ host = os.getenv("LOCUST_HOST", "http://host.docker.internal:31088")
 host = os.getenv("LOCUST_HOST_PROMOTION", os.getenv("LOCUST_HOST", "http://host.docker.internal:31088"))
 ```
 
-**Uso desde Jenkinsfile.dev (sin cambios):** ninguna de las variables `LOCUST_HOST_*` está presente → se usan los defaults 31082–31088.
+**Uso desde Jenkinsfile.dev (sin cambios):** ninguna de las variables `LOCUST_HOST_*` está presente → se usan los defaults 31082-31088.
 
 **Uso desde Jenkinsfile.stage:**
 ```bash
@@ -517,7 +517,7 @@ El SLA definido (p95 < 500 ms, < 1% de errores 5xx en endpoints de negocio) se c
 
 ### 6.3 Consideraciones y limitaciones
 
-**NodePorts en rango 320XX:** Los NodePorts de Kubernetes deben estar en el rango 30000–32767. Los puertos 32082–32088 están dentro del rango válido y no requieren configuración adicional del clúster.
+**NodePorts en rango 320XX:** Los NodePorts de Kubernetes deben estar en el rango 30000-32767. Los puertos 32082-32088 están dentro del rango válido y no requieren configuración adicional del clúster.
 
 **Infra en ClusterIP:** La infraestructura (PostgreSQL, Neo4j, Kafka, Redis) se despliega con `type: ClusterIP` en el namespace stage (igual que en dev), eliminando los NodePorts de Neo4j browser (30474) y MailHog UI (30025) que existen en producción. Esto no afecta la funcionalidad de los microservicios, que acceden a estos servicios por nombre DNS interno al namespace.
 

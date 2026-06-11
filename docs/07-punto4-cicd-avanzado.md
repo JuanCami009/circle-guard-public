@@ -163,6 +163,18 @@ stage('Quality Gate') {
 | stage | `false` | Pipeline continúa, build marcado Unstable |
 | master | **`true`** | Pipeline se **aborta** - no llega a Docker ni al deploy |
 
+**Quality Gate utilizada:** no existe un archivo `sonar-project.properties` en el repositorio ni una Quality Gate personalizada configurada, por lo que SonarQube aplica la **"Sonar Way"** por defecto. Sus umbrales son:
+
+| Condicion | Umbral |
+|---|---|
+| Cobertura de codigo nuevo | >= 80% |
+| Lineas duplicadas en codigo nuevo | <= 3% |
+| Maintainability Rating (codigo nuevo) | A |
+| Reliability Rating (codigo nuevo) | A |
+| Security Rating (codigo nuevo) | A |
+
+Estos umbrales son apropiados para CircleGuard porque el proyecto es un backend de microservicios con 8 servicios independientes: el 80% de cobertura es alcanzable dado que los tests unitarios e integracion ya existen en cada servicio, y los ratings A en fiabilidad y seguridad son el minimo aceptable para un sistema que maneja autenticacion y datos de promotores.
+
 ### 1.5 Resultado esperado en SonarQube
 
 Tras la primera ejecución del pipeline, el proyecto `circleguard` aparece en `http://localhost:9000` con:
@@ -200,7 +212,7 @@ Los 8 servicios se escanean en bucle. Los reportes HTML se archivan en Jenkins c
 |---|---|---|---|
 | `TRIVY_EXIT_CODE` | `0` | `0` | `1` |
 | `IMAGE_TAG` | `dev` | `stage` | `latest` |
-| Bloquea pipeline | No | No | **Sí** ante HIGH/CRITICAL |
+| Bloquea pipeline | No | No | **Si** ante HIGH/CRITICAL |
 
 ```groovy
 environment {
@@ -209,6 +221,10 @@ environment {
     IMAGE_TAG       = 'latest'
 }
 ```
+
+En dev/stage se acepta `exit-code=0` porque el objetivo es generar reportes informativos sin bloquear iteraciones frecuentes. El riesgo es controlado porque: (a) prod si bloquea con `exit-code=1`, (b) `Jenkinsfile.security` corre un scan diario nocturno independiente del pipeline, (c) las vulnerabilidades reportadas se archivan como artefacto HTML para revision manual.
+
+**Alcance real del escaneo:** Trivy en modo `image` detecta dos categorias de vulnerabilidades: (1) CVEs en librerias del classpath (JARs de dependencias Gradle empaquetados en la imagen), y (2) CVEs en la imagen base (JDK 21 Temurin). NO detecta vulnerabilidades en la logica de negocio del codigo fuente. Para la cobertura de endpoints HTTP se complementa con OWASP ZAP, que corre analisis dinamico sobre la aplicacion en ejecucion.
 
 ### 2.3 Gestión de CVEs aceptados
 
@@ -246,14 +262,21 @@ El pipeline original usaba `VERSION="v1.0.${BUILD_NUMBER}"` - un número de buil
 
 ### 3.2 Reglas de bump (Conventional Commits)
 
-El script `scripts/semver.sh` lee los commits desde el último tag `vX.Y.Z` y aplica las reglas del estándar [Conventional Commits](https://www.conventionalcommits.org/):
+El script `scripts/semver.sh` lee los commits desde el ultimo tag `vX.Y.Z` y aplica las reglas del estandar [Conventional Commits](https://www.conventionalcommits.org/):
 
 | Tipo de commit | Bump | Ejemplo |
 |---|---|---|
 | `BREAKING CHANGE` en cuerpo/pie | **MAJOR** | `feat!: migrar API a v2` |
 | `feat!:` o `fix!:` (con `!`) | **MAJOR** | `fix!(auth): cambiar firma de token` |
-| `feat:` | **MINOR** | `feat(gateway): validación QR multifactor` |
+| `feat:` | **MINOR** | `feat(gateway): validacion QR multifactor` |
 | `fix:` / `chore:` / `docs:` / cualquier otro | **PATCH** | `fix(promotion): corregir cascade null` |
+
+**Implementacion en `scripts/semver.sh`:**
+
+- Busca el ultimo tag con `git describe --tags --match "v[0-9]*.[0-9]*.[0-9]*" --abbrev=0`. Si no hay tags previos, parte de `v0.0.0` y fuerza bump `minor` (resultado inicial `v0.1.0`).
+- Para detectar BREAKING CHANGE ejecuta `git log ${RANGE} --pretty=format:"%s%n%b" --no-merges` (incluye tanto el asunto como el cuerpo completo del commit) y busca la cadena literal `BREAKING CHANGE` o un tipo con `!` mediante la expresion `(BREAKING CHANGE|^feat!|^fix!|^refactor!|^[a-z]+!(\([^)]+\))?)`. Esto significa que `BREAKING CHANGE` puede aparecer tanto en el footer como en cualquier linea del cuerpo y sera detectado.
+- Para MINOR ejecuta `git log ${RANGE} --pretty=format:"%s" --no-merges` (solo asunto) y busca `^feat(\([^)]+\))?:`.
+- El tag se crea fuera del script, en la etapa `Release Notes` del pipeline: `git tag ${VERSION}`.
 
 ```mermaid
 flowchart LR
@@ -334,7 +357,7 @@ Los tres Jenkinsfiles tienen el bloque `post` extendido:
 post {
     failure {
         emailext(
-            subject: "❌ FALLÓ ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
+            subject: "[FALLO] ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
             body: """Pipeline fallido.
 Job     : ${env.JOB_NAME}
 Build   : #${env.BUILD_NUMBER}
@@ -347,7 +370,7 @@ Consola : ${env.BUILD_URL}console
     }
     unstable {
         emailext(
-            subject: "⚠️ INESTABLE ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
+            subject: "[INESTABLE] ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
             // ...
             to: 'devops@circleguard.local'
         )
@@ -390,7 +413,7 @@ El propósito de dev y stage es dar feedback rápido al desarrollador. Bloquear 
 
 ### 6.2 Trivy con exit-code 0 en dev/stage
 
-El escaneo en dev/stage genera evidencia auditable (reportes HTML archivados) sin interrumpir el flujo de desarrollo. El equipo puede revisar las vulnerabilidades y decidir si son aceptables antes de que el código llegue al pipeline master, donde sí son bloqueantes.
+El escaneo en dev/stage genera evidencia auditable (reportes HTML archivados) sin interrumpir el flujo de desarrollo frecuente. El riesgo de no bloquear en estos entornos es controlado por tres razones: prod bloquea con `exit-code=1` ante cualquier CVE HIGH/CRITICAL, `Jenkinsfile.security` ejecuta un scan nocturno independiente del pipeline de entrega, y los reportes HTML quedan archivados como artefactos del build para revision manual. Trivy detecta CVEs en librerias JAR del classpath y en la imagen base (JDK 21 Temurin), pero no vulnerabilidades en logica de negocio; para eso el proyecto complementa con OWASP ZAP.
 
 ### 6.3 Semver sobre BUILD_NUMBER
 

@@ -37,7 +37,7 @@ Los siguientes patrones fueron identificados en el código fuente. No requieren 
 - Evita tiempos de espera indefinidos (sin CB, cada request esperaría el timeout TCP del SO ~2min)
 - El fallback controlado previene 500s en cascada
 - Estado HALF_OPEN permite recuperación automática sin intervención manual
-- Ventana deslizante de 10 llamadas detecta degradación parcial
+- Ventana deslizante de 10 llamadas: con menos de 10 la tasa de fallos tiene alta varianza estadistica (1 fallo sobre 3 llamadas = 33%, ruido); con 20+ el CB tarda el doble en detectar degradacion parcial. 10 es el minimo estadisticamente estable para `failureRateThreshold: 50` (necesita al menos 5 fallos reales para abrir)
 
 **Archivos modificados:**
 
@@ -115,7 +115,7 @@ sequenceDiagram
 | Alternativa | Razón |
 |---|---|
 | Spring Retry solo | No tiene estado de CB: no abre circuito aunque el servicio esté completamente caído |
-| Istio / service mesh | Correcto a escala; excesivo para proyecto académico. Oculta lógica fuera del código Java |
+| Istio / service mesh | Requiere sidecar proxy por pod (minimo 2 contenedores por servicio, ~50MB RAM extra cada uno). Para 8 servicios = 8 sidecars = ~400MB RAM adicional en un cluster kind con 4GB. Resilience4j opera in-process, 0 overhead de red. Ademas oculta la logica de resiliencia fuera del codigo Java, dificultando el debugging y las pruebas unitarias |
 | Feign + Resilience4j | Feign requiere Spring Cloud; complejidad no justificada |
 | Hystrix | Deprecated desde 2018; Resilience4j es el sucesor estándar |
 
@@ -140,7 +140,7 @@ sequenceDiagram
 - **Feature Toggle:** `MockPushServiceImpl` y `PushServiceImpl` son beans mutuamente excluyentes controlados por `features.push.real-delivery`. Spring selecciona el bean correcto en el arranque vía `@ConditionalOnProperty`.
 
 **Beneficios:**
-- Elimina duplicación de secretos entre 4+ `application.yml`
+- Elimina duplicacion del secreto JWT hardcodeado en exactamente 4 `application.yml`: `auth-service`, `gateway-service`, `promotion-service` y `notification-service` (todos tenian `my-super-secret-dev-key-32-chars-long-12345678` literal)
 - Permite despliegues multi-entorno sin cambios de código
 - El toggle es explícito, auditable y testeable (no un string mágico)
 - `FeatureFlags` como `@ConfigurationProperties` centraliza todos los toggles del servicio
@@ -197,7 +197,7 @@ flowchart TD
 
 **Estado:** Aceptado | **Fecha:** 2025-05-28
 
-**Contexto:** El secreto JWT estaba hardcoded y duplicado en 4 `application.yml`. `PushServiceImpl` usaba `if (gotifyToken.equals("MOCK_TOKEN"))` como toggle ad-hoc: no testeable con DI, viola SRP, depende de un string mágico.
+**Contexto:** El secreto JWT estaba hardcoded y duplicado en 4 `application.yml` (auth-service, gateway-service, promotion-service, notification-service). `PushServiceImpl` usaba `if (gotifyToken.equals("MOCK_TOKEN"))` como toggle ad-hoc: no testeable con DI, viola SRP, depende de un string magico.
 
 **Decisión:** Placeholders `${ENV:default}` en YAMLs. Dos beans condicionales con `@ConditionalOnProperty`. `FeatureFlags` como `@ConfigurationProperties`.
 
@@ -229,10 +229,10 @@ flowchart TD
 **Propósito:** Cada scan de QR ejecuta (1) verificación HMAC del JWT y (2) consulta a Redis. Con Caffeine L1 local, validaciones repetidas del mismo token dentro de 30s se sirven en microsegundos sin red. Si Redis cae, el gate no retorna "Invalid Token" (falso negativo de seguridad) sino que opera en modo degradado.
 
 **Beneficios:**
-- Latencia P50: ~5ms → < 1ms para tokens cacheados
-- Solo tokens GREEN se cachean (`unless = "!#result.valid"`); tokens RED siempre consultan Redis
-- Fallback ante Redis caído: gate sigue operando sin bloquear acceso al campus
-- `recordStats()` en Caffeine expone hit rate para observabilidad
+- Latencia para tokens cacheados: Caffeine sirve desde heap local (< 1ms) vs. round-trip a Redis por red local (~3-8ms segun mediciones tipicas de localhost). TTL configurado: `expireAfterWrite=30s` en `application.yml` y `TimeUnit.SECONDS` en `CacheConfig.java:23`. Capacidad maxima: 10 000 entradas (`maximumSize=10_000` en `CacheConfig.java:22`).
+- Solo tokens GREEN se cachean (`unless = "!#result.valid"` en `QrValidationService.java:29`); tokens RED siempre consultan Redis para reflejar cambios de estado inmediatamente
+- Fallback ante Redis caido: `getStatusFromRedis()` atrapa cualquier excepcion, loguea `WARN` y retorna `null` (sin restriccion), permitiendo acceso al campus en modo degradado (`QrValidationService.java:52-58`)
+- `recordStats()` en `CacheConfig.java:24` expone hit rate para observabilidad
 
 **Archivos modificados:**
 

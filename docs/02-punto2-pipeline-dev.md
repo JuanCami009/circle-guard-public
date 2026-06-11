@@ -15,7 +15,7 @@ El pipeline ejecuta las siguientes etapas para los 8 microservicios del proyecto
 | 5 | Integration Tests | Paralelo | 8 | 6 servicios con tests reales (no-Testcontainers); `promotion-service` omitido por incompatibilidad Docker Desktop - ver sección 3.5 |
 | 6 | Docker Build `:dev` | Paralelo | 8 | `docker build` copiando JAR pre-compilado, tag `:dev` |
 | 7 | Deploy Dev | Secuencial | 8 + infra | `kubectl apply` con `sed` para namespace, imagen y NodePorts |
-| 8 | Smoke Tests | Secuencial | 8 | `curl` a `host.docker.internal` NodePorts 31082–31088, 31083, 31180 |
+| 8 | Smoke Tests | Secuencial | 8 | `curl` a `host.docker.internal` NodePorts 31082-31088, 31083, 31180 |
 | 9 | E2E Tests | Placeholder | - | Implementado en Punto 3 |
 | 10 | Performance Tests | Placeholder | - | Implementado en Punto 3 |
 
@@ -32,7 +32,7 @@ El entorno de desarrollo se despliega en el namespace `circleguard-dev`, complet
 | Namespace | `circleguard` | `circleguard-dev` |
 | Tag de imagen | `:latest` | `:dev` |
 | Origen del build | Manual / docker compose | Pipeline Jenkins |
-| NodePorts servicios | 300XX (30082–30088) | 310XX (31082–31088) |
+| NodePorts servicios | 300XX (30082-30088) | 310XX (31082-31088) |
 | NodePorts infra | 30474 (Neo4j), 30025 (MailHog) | ClusterIP (sin NodePort) |
 | Manifests | `k8s/infra/` + `k8s/services/` | Mismos manifests, transformados con `sed` |
 

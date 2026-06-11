@@ -124,4 +124,4 @@ Referencia académica - precios On-Demand aproximados a junio 2026.
 |---|---|---|---|---|
 | dev (local) | Docker Desktop | circleguard-dev | 31000 | $0 |
 | stage (local) | Docker Desktop | circleguard-stage | 32000 | $0 |
-| prod (AWS EKS ref.) | 1-4 EC2 | circleguard-prod | 30000 | $326–$515 |
+| prod (AWS EKS ref.) | 1-4 EC2 | circleguard-prod | 30000 | $326-$515 |

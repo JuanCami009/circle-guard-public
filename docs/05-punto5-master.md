@@ -17,7 +17,7 @@ La adición clave de este pipeline respecto a los anteriores es la etapa **Relea
 | 5 | Integration Tests | Paralelo | 8 | 6 servicios con tests reales; `promotion-service` omitido (Docker Desktop) |
 | 6 | Docker Build `:latest` | Paralelo | 8 | `docker build`, tag `:latest` |
 | 7 | Deploy Master | Secuencial | 8 + infra | `kubectl apply` directo - sin `sed` |
-| 8 | Smoke Tests | Secuencial | 8 | `curl` a `host.docker.internal` NodePorts 30082–30088, 30083, 30180 |
+| 8 | Smoke Tests | Secuencial | 8 | `curl` a `host.docker.internal` NodePorts 30082-30088, 30083, 30180 |
 | 9 | E2E Tests | Secuencial | 6 | `run_e2e.sh` con `E2E_PORT_*=300XX` |
 | 10 | Performance Tests | Secuencial | 4 | Locust con `LOCUST_HOST_*` apuntando a 300XX |
 | 11 | Release Notes | Secuencial | - | `git log` → Markdown clasificado → artefacto archivado + tag Git |

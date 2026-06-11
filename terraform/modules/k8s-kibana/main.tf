@@ -55,8 +55,8 @@ resource "kubernetes_deployment_v1" "kibana" {
           }
 
           resources {
-            requests = { memory = "512Mi", cpu = "200m" }
-            limits   = { memory = "1Gi",  cpu = "500m" }
+            requests = { memory = "256Mi", cpu = "200m" }
+            limits   = { memory = "512Mi", cpu = "500m" }
           }
         }
       }

@@ -52,7 +52,7 @@ resource "kubernetes_deployment_v1" "elasticsearch" {
           }
           env {
             name  = "ES_JAVA_OPTS"
-            value = "-Xms512m -Xmx512m"
+            value = "-Xms256m -Xmx512m"
           }
 
           readiness_probe {
@@ -66,8 +66,8 @@ resource "kubernetes_deployment_v1" "elasticsearch" {
           }
 
           resources {
-            requests = { memory = "1Gi", cpu = "200m" }
-            limits   = { memory = "2Gi", cpu = "1000m" }
+            requests = { memory = "512Mi", cpu = "200m" }
+            limits   = { memory = "1Gi", cpu = "1000m" }
           }
 
           volume_mount {

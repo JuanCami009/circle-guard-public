@@ -231,7 +231,7 @@ locals {
         # SPRING_LDAP_PASSWORD eliminado (Punto 8): se inyecta desde circleguard-secrets via envFrom
       }
       resources = {
-        requests = { memory = "256Mi", cpu = "100m" }
+        requests = { memory = "128Mi", cpu = "100m" }
         limits   = { memory = "512Mi", cpu = "500m" }
       }
     }
@@ -248,7 +248,7 @@ locals {
         # se inyectan desde circleguard-secrets via envFrom
       }
       resources = {
-        requests = { memory = "256Mi", cpu = "100m" }
+        requests = { memory = "128Mi", cpu = "100m" }
         limits   = { memory = "512Mi", cpu = "500m" }
       }
     }
@@ -265,8 +265,8 @@ locals {
         SPRING_DATASOURCE_URL = "jdbc:postgresql://postgres-svc:5432/circleguard_promotion"
       }
       resources = {
-        requests = { memory = "512Mi", cpu = "200m" }
-        limits   = { memory = "1Gi", cpu = "1000m" }
+        requests = { memory = "256Mi", cpu = "200m" }
+        limits   = { memory = "512Mi", cpu = "1000m" }
       }
     }
     "notification-service" = {
@@ -279,7 +279,7 @@ locals {
         SERVER_PORT = "8082"
       }
       resources = {
-        requests = { memory = "256Mi", cpu = "100m" }
+        requests = { memory = "128Mi", cpu = "100m" }
         limits   = { memory = "512Mi", cpu = "500m" }
       }
     }
@@ -292,7 +292,7 @@ locals {
         SPRING_DATASOURCE_URL = "jdbc:postgresql://postgres-svc:5432/circleguard_form"
       }
       resources = {
-        requests = { memory = "256Mi", cpu = "100m" }
+        requests = { memory = "128Mi", cpu = "100m" }
         limits   = { memory = "512Mi", cpu = "500m" }
       }
     }
@@ -304,7 +304,7 @@ locals {
         SERVER_PORT = "8085"
       }
       resources = {
-        requests = { memory = "256Mi", cpu = "100m" }
+        requests = { memory = "128Mi", cpu = "100m" }
         limits   = { memory = "512Mi", cpu = "500m" }
       }
     }
@@ -316,7 +316,7 @@ locals {
         SERVER_PORT = "8087"
       }
       resources = {
-        requests = { memory = "256Mi", cpu = "100m" }
+        requests = { memory = "128Mi", cpu = "100m" }
         limits   = { memory = "512Mi", cpu = "500m" }
       }
     }
@@ -329,7 +329,7 @@ locals {
         SPRING_DATASOURCE_URL = "jdbc:postgresql://postgres-svc:5432/circleguard_dashboard"
       }
       resources = {
-        requests = { memory = "256Mi", cpu = "100m" }
+        requests = { memory = "128Mi", cpu = "100m" }
         limits   = { memory = "512Mi", cpu = "500m" }
       }
     }

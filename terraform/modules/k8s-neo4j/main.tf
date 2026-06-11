@@ -84,7 +84,7 @@ resource "kubernetes_deployment_v1" "neo4j" {
           }
 
           env {
-            name  = "NEO4J_server_memory_pagecache__size"
+            name  = "NEO4J_server_memory_pagecache_size"
             value = "128m"
           }
 

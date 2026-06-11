@@ -646,7 +646,7 @@ pipeline {
         }
         failure {
             echo "Dev pipeline FALLIDO — revisar logs anteriores"
-            sh 'docker stop circleguard-dev-control-plane 2>/dev/null || true'
+            sh 'kind delete cluster --name circleguard-dev 2>/dev/null || true'
             emailext(
                 subject: "❌ FALLÓ ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
                 body: """Pipeline de desarrollo fallido.

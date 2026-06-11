@@ -370,7 +370,7 @@ module "services" {
   volume_mounts = each.key == "file-service" ? [{ name = "uploads", mount_path = "/app/uploads", read_only = false }] : []
   volumes       = each.key == "file-service" ? [{ name = "uploads", type = "emptyDir" }] : []
 
-  depends_on = [module.config, module.postgres, module.neo4j, module.kafka, module.redis, module.openldap, module.mailhog, module.rbac, module.elasticsearch, module.kibana, module.logstash]
+  depends_on = [module.config, module.postgres, module.neo4j, module.kafka, module.redis, module.openldap, module.mailhog, module.rbac, module.elasticsearch, module.kibana]
 }
 
 # ── 8. Ingress-nginx + TLS (Punto 8 — Seguridad) ──────────────────────────────

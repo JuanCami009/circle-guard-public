@@ -2,14 +2,17 @@ package com.circleguard.auth.controller;
 
 import com.circleguard.auth.client.IdentityClient;
 import com.circleguard.auth.service.JwtTokenService;
-import com.circleguard.auth.service.CustomUserDetailsService;
-import com.circleguard.auth.security.SecurityConfig;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
-import org.springframework.context.annotation.Import;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -22,8 +25,17 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(LoginController.class)
-@Import(SecurityConfig.class)
+@AutoConfigureMockMvc(addFilters = false)
+@Import(LoginControllerTest.MetricsConfig.class)
 public class LoginControllerTest {
+
+    @TestConfiguration
+    static class MetricsConfig {
+        @Bean
+        public MeterRegistry meterRegistry() {
+            return new SimpleMeterRegistry();
+        }
+    }
 
     @Autowired
     private MockMvc mockMvc;
@@ -36,9 +48,6 @@ public class LoginControllerTest {
 
     @MockBean
     private IdentityClient identityClient;
-
-    @MockBean
-    private CustomUserDetailsService userDetailsService;
 
     @Test
     void shouldLoginSuccessfullyAndReturnAnonymizedToken() throws Exception {

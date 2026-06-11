@@ -1,0 +1,293 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "annotations": { "list": [] },
+  "description": "Dashboard de métricas de negocio CircleGuard — logins, encuestas, notificaciones, actualizaciones de estado de salud.",
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 1,
+  "id": null,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "Autenticación",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 1 },
+      "id": 2,
+      "targets": [
+        {
+          "expr": "rate(circleguard_logins_total{result=\"success\"}[5m])",
+          "legendFormat": "Exitosos",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(circleguard_logins_total{result=\"failure\"}[5m])",
+          "legendFormat": "Fallidos",
+          "refId": "B"
+        }
+      ],
+      "title": "Tasa de Logins (por 5m)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "id": 3,
+      "options": { "reduceOptions": { "calcs": ["sum"] } },
+      "targets": [
+        {
+          "expr": "increase(circleguard_logins_total{result=\"success\"}[24h])",
+          "legendFormat": "Logins OK hoy",
+          "refId": "A"
+        }
+      ],
+      "title": "Logins exitosos (24h)",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "id": 4,
+      "title": "Formularios de Salud",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 10 },
+      "id": 5,
+      "targets": [
+        {
+          "expr": "rate(circleguard_surveys_submitted_total[5m])",
+          "legendFormat": "Encuestas/s",
+          "refId": "A"
+        }
+      ],
+      "title": "Tasa de Encuestas Enviadas",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 10 },
+      "id": 6,
+      "options": { "reduceOptions": { "calcs": ["sum"] } },
+      "targets": [
+        {
+          "expr": "increase(circleguard_surveys_submitted_total[24h])",
+          "legendFormat": "Encuestas hoy",
+          "refId": "A"
+        }
+      ],
+      "title": "Encuestas enviadas (24h)",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "id": 7,
+      "title": "Estado de Salud (promotion-service)",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+      "id": 8,
+      "targets": [
+        {
+          "expr": "rate(circleguard_health_status_updates_total[5m])",
+          "legendFormat": "{{ status }}",
+          "refId": "A"
+        }
+      ],
+      "title": "Actualizaciones de Estado de Salud (por 5m)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "id": 9,
+      "title": "Notificaciones",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "id": 10,
+      "targets": [
+        {
+          "expr": "rate(circleguard_notifications_sent_total[5m])",
+          "legendFormat": "{{ channel }} - {{ result }}",
+          "refId": "A"
+        }
+      ],
+      "title": "Notificaciones Enviadas (por 5m)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 },
+      "id": 11,
+      "title": "Control de Acceso (gateway-service)",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 37 },
+      "id": 12,
+      "targets": [
+        {
+          "expr": "rate(circleguard_gate_validations_total{result=\"granted\"}[5m])",
+          "legendFormat": "Acceso concedido",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(circleguard_gate_validations_total{result=\"denied\"}[5m])",
+          "legendFormat": "Acceso denegado",
+          "refId": "B"
+        }
+      ],
+      "title": "Validaciones de Acceso (por 5m)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 37 },
+      "id": 13,
+      "options": { "reduceOptions": { "calcs": ["sum"] } },
+      "targets": [
+        {
+          "expr": "increase(circleguard_gate_validations_total{result=\"denied\"}[24h])",
+          "legendFormat": "Denegaciones hoy",
+          "refId": "A"
+        }
+      ],
+      "title": "Accesos denegados (24h)",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 45 },
+      "id": 14,
+      "title": "Archivos (file-service)",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 46 },
+      "id": 15,
+      "targets": [
+        {
+          "expr": "rate(circleguard_file_uploads_total{result=\"success\"}[5m])",
+          "legendFormat": "Subidas exitosas",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(circleguard_file_uploads_total{result=\"failure\"}[5m])",
+          "legendFormat": "Subidas fallidas",
+          "refId": "B"
+        }
+      ],
+      "title": "Tasa de Subida de Archivos (por 5m)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 46 },
+      "id": 16,
+      "options": { "reduceOptions": { "calcs": ["sum"] } },
+      "targets": [
+        {
+          "expr": "increase(circleguard_file_uploads_total{result=\"success\"}[24h])",
+          "legendFormat": "Archivos subidos hoy",
+          "refId": "A"
+        }
+      ],
+      "title": "Archivos subidos (24h)",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 54 },
+      "id": 17,
+      "title": "Identidad (identity-service)",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 55 },
+      "id": 18,
+      "targets": [
+        {
+          "expr": "rate(circleguard_identity_mappings_total[5m])",
+          "legendFormat": "Nuevos mapeos/s",
+          "refId": "A"
+        }
+      ],
+      "title": "Tasa de Mapeos de Identidad (por 5m)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 55 },
+      "id": 19,
+      "options": { "reduceOptions": { "calcs": ["sum"] } },
+      "targets": [
+        {
+          "expr": "increase(circleguard_identity_mappings_total[24h])",
+          "legendFormat": "Mapeos nuevos hoy",
+          "refId": "A"
+        }
+      ],
+      "title": "Identidades registradas (24h)",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 63 },
+      "id": 20,
+      "title": "Consultas Dashboard (dashboard-service)",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 64 },
+      "id": 21,
+      "targets": [
+        {
+          "expr": "sum(rate(circleguard_dashboard_queries_total[5m])) by (endpoint)",
+          "legendFormat": "{{ endpoint }}",
+          "refId": "A"
+        }
+      ],
+      "title": "Consultas al Dashboard por Endpoint (por 5m)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["circleguard", "business"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "CircleGuard — Métricas de Negocio",
+  "uid": "circleguard-business",
+  "version": 1
+}

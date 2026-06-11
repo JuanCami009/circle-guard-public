@@ -1,0 +1,34 @@
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+
+management:
+  health:
+    mail:
+      enabled: false
+  mail:
+    host: localhost
+    port: 25
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
+
+jwt:
+  secret: "my-super-secret-test-key-32-chars-long"
+  expiration: 3600000
+
+qr:
+  secret: "my-qr-secret-key-for-test-1234567890"
+  expiration: 300
+
+push:
+  gotify:
+    url: "http://localhost:8080"
+    token: "test-token"
+
+features:
+  push:
+    real-delivery: "false"

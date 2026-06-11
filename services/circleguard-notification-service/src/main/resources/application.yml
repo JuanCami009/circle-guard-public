@@ -23,12 +23,21 @@ auth:
     url: ${AUTH_API_URL:http://localhost:8180}
 
 jwt:
-  secret: "my-super-secret-dev-key-32-chars-long-12345678"
+  secret: "${JWT_SECRET:my-super-secret-dev-key-32-chars-long-12345678}"
   expiration: 3600000
 
 qr:
-  secret: "my-qr-secret-key-for-dev-1234567890"
+  secret: "${QR_SECRET:my-qr-secret-key-for-dev-1234567890}"
   expiration: 300
+
+push:
+  gotify:
+    url: "${GOTIFY_URL:http://localhost:8080}"
+    token: "${GOTIFY_TOKEN:dev-token-replace-in-prod}"
+
+features:
+  push:
+    real-delivery: "${PUSH_REAL_DELIVERY:false}"
 
 server:
   port: 8082

@@ -1,0 +1,158 @@
+# ── Seguridad (Punto 8): RBAC ────────────────────────────────────────────────
+# ServiceAccounts dedicadas por microservicio (automountServiceAccountToken: false)
+# + Roles namespaced para operadores (developer) y pipeline CI (ci-deployer).
+# Aplicar antes de los manifests de servicios (k8s/services/09-16-*.yml).
+#
+# Para dev/stage: aplicar con sed para sustituir namespace:
+#   sed 's/namespace: circleguard/namespace: circleguard-dev/g' k8s/infra/18-rbac.yml | kubectl apply -f -
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── ServiceAccounts por microservicio ─────────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: auth-service-sa
+  namespace: circleguard
+  labels:
+    app.kubernetes.io/managed-by: kubectl
+    circleguard/security: punto8
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: identity-service-sa
+  namespace: circleguard
+  labels:
+    app.kubernetes.io/managed-by: kubectl
+    circleguard/security: punto8
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: promotion-service-sa
+  namespace: circleguard
+  labels:
+    app.kubernetes.io/managed-by: kubectl
+    circleguard/security: punto8
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: notification-service-sa
+  namespace: circleguard
+  labels:
+    app.kubernetes.io/managed-by: kubectl
+    circleguard/security: punto8
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: form-service-sa
+  namespace: circleguard
+  labels:
+    app.kubernetes.io/managed-by: kubectl
+    circleguard/security: punto8
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: file-service-sa
+  namespace: circleguard
+  labels:
+    app.kubernetes.io/managed-by: kubectl
+    circleguard/security: punto8
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gateway-service-sa
+  namespace: circleguard
+  labels:
+    app.kubernetes.io/managed-by: kubectl
+    circleguard/security: punto8
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dashboard-service-sa
+  namespace: circleguard
+  labels:
+    app.kubernetes.io/managed-by: kubectl
+    circleguard/security: punto8
+automountServiceAccountToken: false
+---
+# ── SA para operaciones humanas y pipeline CI ─────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: developer
+  namespace: circleguard
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ci-deployer
+  namespace: circleguard
+---
+# ── Role: developer (read-only) ───────────────────────────────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: circleguard-developer
+  namespace: circleguard
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "services", "configmaps", "endpoints"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: circleguard-developer
+  namespace: circleguard
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: circleguard-developer
+subjects:
+  - kind: ServiceAccount
+    name: developer
+    namespace: circleguard
+---
+# ── Role: ci-deployer (gestión de deployments para Jenkins) ──────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: circleguard-ci-deployer
+  namespace: circleguard
+rules:
+  - apiGroups: [""]
+    resources: ["services", "configmaps", "pods", "pods/log"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: circleguard-ci-deployer
+  namespace: circleguard
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: circleguard-ci-deployer
+subjects:
+  - kind: ServiceAccount
+    name: ci-deployer
+    namespace: circleguard

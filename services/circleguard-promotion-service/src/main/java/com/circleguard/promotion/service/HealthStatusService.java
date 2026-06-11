@@ -2,7 +2,8 @@ package com.circleguard.promotion.service;
 
 import com.circleguard.promotion.exception.FenceException;
 import com.circleguard.promotion.repository.graph.UserNodeRepository;
-import lombok.RequiredArgsConstructor;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
@@ -14,7 +15,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class HealthStatusService {
     private final UserNodeRepository userNodeRepository;
@@ -24,8 +24,27 @@ public class HealthStatusService {
     private final com.circleguard.promotion.repository.jpa.SystemSettingsRepository systemSettingsRepository;
     private final com.circleguard.promotion.repository.graph.CircleNodeRepository circleNodeRepository;
 
+    // ── Métricas de negocio: cambios de estado de salud por estado (Punto 7)
+    private final MeterRegistry meterRegistry;
+
     private static final String STATUS_KEY_PREFIX = "user:status:";
     private static final String TOPIC_STATUS_CHANGED = "promotion.status.changed";
+
+    public HealthStatusService(UserNodeRepository userNodeRepository,
+                               Neo4jClient neo4jClient,
+                               StringRedisTemplate redisTemplate,
+                               KafkaTemplate<String, Object> kafkaTemplate,
+                               com.circleguard.promotion.repository.jpa.SystemSettingsRepository systemSettingsRepository,
+                               com.circleguard.promotion.repository.graph.CircleNodeRepository circleNodeRepository,
+                               MeterRegistry meterRegistry) {
+        this.userNodeRepository      = userNodeRepository;
+        this.neo4jClient             = neo4jClient;
+        this.redisTemplate           = redisTemplate;
+        this.kafkaTemplate           = kafkaTemplate;
+        this.systemSettingsRepository = systemSettingsRepository;
+        this.circleNodeRepository    = circleNodeRepository;
+        this.meterRegistry           = meterRegistry;
+    }
 
     /**
      * Updates a user's health status and triggers recursive fencing if required.
@@ -43,7 +62,7 @@ public class HealthStatusService {
         if ("ACTIVE".equals(status) && !adminOverride) {
             checkFenceWindow(anonymousId);
         }
-        
+
         var settings = systemSettingsRepository.getSettings()
                 .orElse(com.circleguard.promotion.model.jpa.SystemSettings.builder()
                         .encounterWindowDays(14)
@@ -51,11 +70,11 @@ public class HealthStatusService {
                         .unconfirmedFencingEnabled(true)
                         .autoThresholdSeconds(3600L)
                         .build());
-        
+
         long threshold = System.currentTimeMillis() - ((long)settings.getEncounterWindowDays() * 24 * 60 * 60 * 1000);
 
         // Robust Multi-Tier High-Confidence Propagation Cypher - Augmented with isValid checks and timing
-        String unifiedQuery = 
+        String unifiedQuery =
             "MATCH (source:User {anonymousId: $id}) " +
             "SET source.status = $status, source.statusUpdatedAt = timestamp() " +
             "WITH source " +
@@ -94,9 +113,16 @@ public class HealthStatusService {
                 .fetch().one();
 
         if (result.isPresent()) {
+            // ── métrica de negocio: actualización de estado de salud ───────
+            Counter.builder("circleguard_health_status_updates_total")
+                   .description("Total de actualizaciones de estado de salud en promotion-service")
+                   .tag("status", status)
+                   .register(meterRegistry)
+                   .increment();
+
             Map<String, String> cacheUpdates = new HashMap<>();
             cacheUpdates.put(STATUS_KEY_PREFIX + anonymousId, status);
-            
+
             @SuppressWarnings("unchecked")
             List<Map<String, String>> affected = (List<Map<String, String>>) result.get().get("affectedContacts");
             if (affected != null) {
@@ -131,7 +157,7 @@ public class HealthStatusService {
                 priorityPayload.put("affectedCount", affectedCount);
                 priorityPayload.put("timestamp", System.currentTimeMillis());
                 priorityPayload.put("eventType", "CONFIRMED".equals(status) ? "CONFIRMED_CASE" : "LARGE_OUTBREAK");
-                
+
                 kafkaTemplate.send("alert.priority", anonymousId, priorityPayload);
             }
         }
@@ -146,7 +172,7 @@ public class HealthStatusService {
             circlePayload.put("locationId", circle.getLocationId());
             circlePayload.put("name", circle.getName());
             circlePayload.put("timestamp", System.currentTimeMillis());
-            
+
             kafkaTemplate.send("circle.fenced", circle.getId().toString(), circlePayload);
         }
     }
@@ -198,7 +224,7 @@ public class HealthStatusService {
 
         // 2. Refined Two-Hop Pulse Recovery
         // Phase 1: Release direct SUSPECT neighbors that have no other CONFIRMED paths
-        String phase1Query = 
+        String phase1Query =
             "MATCH (source:User {anonymousId: $id}) " +
             "OPTIONAL MATCH (source)-[:ENCOUNTERED|MEMBER_OF]-(target:User) " +
             "WHERE target.status = 'SUSPECT' " +
@@ -221,7 +247,7 @@ public class HealthStatusService {
         }
 
         // Phase 2: Release L2 PROBABLE neighbors that have no other risk paths (CONFIRMED or remaining SUSPECT)
-        String phase2Query = 
+        String phase2Query =
             "MATCH (l1:User) WHERE l1.anonymousId IN $l1Ids " +
             "OPTIONAL MATCH (l1)-[:ENCOUNTERED|MEMBER_OF]-(target:User) " +
             "WHERE target.status = 'PROBABLE' " +
@@ -277,24 +303,25 @@ public class HealthStatusService {
         // Note: resolveStatus sets to ACTIVE first, then we update to RECOVERED
         neo4jClient.query("MATCH (u:User {anonymousId: $id}) SET u.status = 'RECOVERED'")
                 .bind(anonymousId).to("id").run();
-        
+
         // Immunize in Redis for 30 days
         redisTemplate.opsForValue().set(STATUS_KEY_PREFIX + anonymousId, "RECOVERED");
         redisTemplate.expire(STATUS_KEY_PREFIX + anonymousId, java.time.Duration.ofDays(30));
     }
+
     private void checkFenceWindow(String anonymousId) {
         var userOpt = userNodeRepository.findById(anonymousId);
         if (userOpt.isPresent()) {
             var user = userOpt.get();
-            if (("SUSPECT".equals(user.getStatus()) || "PROBABLE".equals(user.getStatus())) 
+            if (("SUSPECT".equals(user.getStatus()) || "PROBABLE".equals(user.getStatus()))
                 && user.getStatusUpdatedAt() != null) {
-                
+
                 var settings = systemSettingsRepository.getSettings()
                         .orElseThrow(() -> new IllegalStateException("System Settings not initialized"));
-                
+
                 long fenceDurationMs = (long) settings.getMandatoryFenceDays() * 24 * 60 * 60 * 1000;
                 long elapsed = System.currentTimeMillis() - user.getStatusUpdatedAt();
-                
+
                 if (elapsed < fenceDurationMs) {
                     long remainingDays = (fenceDurationMs - elapsed) / (24 * 60 * 60 * 1000);
                     throw new FenceException("Cannot transition to ACTIVE. User is in mandatory fence window for " + remainingDays + " more days.");

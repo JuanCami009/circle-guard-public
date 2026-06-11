@@ -10,13 +10,20 @@ pipeline {
     environment {
         REGISTRY                              = 'circleguard'
         DEV_NS                                = 'circleguard-dev'
-        GRADLE_OPTS                           = '-Dorg.gradle.daemon=false'
+        GRADLE_OPTS                           = '-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx512m'
         DOCKER_HOST                           = 'unix:///var/run/docker.sock'
         TESTCONTAINERS_RYUK_DISABLED          = 'true'
         TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE = '/var/run/docker.sock'
         // kubeconfig parcheado con host.docker.internal en lugar de 127.0.0.1
         // (el kubeconfig original del host no es accesible desde dentro del contenedor)
-        KUBECONFIG                            = '/var/jenkins_home/kube-jenkins.conf'
+        KUBECONFIG                            = "${WORKSPACE}/terraform/envs/dev/kubeconfig-circleguard-dev.yaml"
+        // CI/CD avanzado — SonarQube y Trivy
+        SONAR_HOST_URL                        = 'http://host.docker.internal:9000'
+        LOCALSTACK_HOST                       = 'host.docker.internal'
+        TF_VAR_localstack_host                = 'host.docker.internal'
+        IMAGE_TAG                             = 'dev'
+        // TRIVY_EXIT_CODE=0 en dev: reporta sin bloquear ante HIGH/CRITICAL
+        TRIVY_EXIT_CODE                       = '0'
     }
 
     stages {
@@ -36,6 +43,13 @@ pipeline {
                 // Descarga gradle-8.14-bin.zip una sola vez antes de los builds paralelos.
                 // Sin esto, los 6 procesos compiten por el lock del archivo y hacen timeout.
                 sh './gradlew --version --no-daemon'
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Start LocalStack') {
+            steps {
+                sh 'docker compose -f terraform/scripts/localstack-compose.yml up -d --no-recreate 2>/dev/null || docker compose -f terraform/scripts/localstack-compose.yml up -d'
             }
         }
 
@@ -197,7 +211,19 @@ pipeline {
             // En macOS con Docker Desktop el proxy de socket impide la detección de Testcontainers.
             parallel {
                 stage('integration:file-service') {
-                    steps { echo 'Sin tests de integración en file-service — etapa omitida.' }
+                    steps {
+                        sh '''
+                            ./gradlew :services:circleguard-file-service:test \
+                                --tests "com.circleguard.file.integration.*" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-file-service/build/test-results/test/*.xml'
+                        }
+                    }
                 }
                 stage('integration:gateway-service') {
                     steps {
@@ -215,7 +241,19 @@ pipeline {
                     }
                 }
                 stage('integration:dashboard-service') {
-                    steps { echo 'Sin tests de integración en dashboard-service — etapa omitida.' }
+                    steps {
+                        sh '''
+                            ./gradlew :services:circleguard-dashboard-service:test \
+                                --tests "com.circleguard.dashboard.integration.*" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-dashboard-service/build/test-results/test/*.xml'
+                        }
+                    }
                 }
                 stage('integration:form-service') {
                     steps {
@@ -289,6 +327,57 @@ pipeline {
         }
 
         // ─────────────────────────────────────────────────────────────────
+        stage('Coverage Reports') {
+            // Genera y publica los reportes de cobertura JaCoCo de los 8 microservicios.
+            // jacocoTestReport se ejecuta automáticamente al final de cada test task
+            // (configurado en build.gradle.kts: finalizedBy("jacocoTestReport")).
+            // Este stage lo archiva explícitamente para Jenkins y SonarQube.
+            // Requiere: Jenkins Coverage Plugin (recordCoverage) instalado.
+            steps {
+                sh './gradlew jacocoTestReport --no-daemon || true'
+            }
+            post {
+                always {
+                    recordCoverage(
+                        tools: [[parser: 'JACOCO',
+                                 pattern: 'services/*/build/reports/jacoco/test/jacocoTestReport.xml']],
+                        sourceCodeRetention: 'EVERY_BUILD'
+                    )
+                    archiveArtifacts artifacts: 'services/*/build/reports/jacoco/**/*.html',
+                                     allowEmptyArchive: true
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('SonarQube Analysis') {
+            // Analiza los 8 microservicios con SonarQube leyendo los reportes JaCoCo XML
+            // generados en Unit Tests / Integration Tests.
+            // Requiere: plugin SonarQube Scanner en Jenkins + credencial 'sonar-token'
+            //           + servidor 'sonarqube' configurado en Jenkins > Configure System.
+            steps {
+                withSonarQubeEnv('sonarqube') {
+                    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                        sh './gradlew sonar --no-daemon -Dsonar.token=${SONAR_TOKEN} -Dsonar.host.url=${SONAR_HOST_URL}'
+                    }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Quality Gate') {
+            // Espera el veredicto del Quality Gate de SonarQube vía webhook.
+            // abortPipeline: false en dev — el resultado se registra pero NO bloquea el pipeline.
+            // Requiere: webhook en SonarQube > Administration > Webhooks apuntando a
+            //           http://JENKINS_URL/sonarqube-webhook/
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: false
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
         stage('Docker Build :dev') {
             parallel {
                 stage('docker:file-service') {
@@ -335,49 +424,109 @@ pipeline {
         }
 
         // ─────────────────────────────────────────────────────────────────
-        stage('Deploy Dev') {
+        stage('Trivy Scan') {
+            // Escanea las 8 imágenes Docker con Trivy buscando vulnerabilidades HIGH y CRITICAL.
+            // TRIVY_EXIT_CODE=0 en dev → genera reportes HTML sin bloquear el pipeline.
+            // Los reportes se archivan como artefactos del build para revisión.
             steps {
                 sh '''
-                    # Crear namespace dev si no existe
-                    kubectl apply -f k8s/00-namespace-dev.yml
-
-                    # Desplegar infra al namespace circleguard-dev.
-                    # Los NodePorts de conveniencia (neo4j-browser, mailhog-ui) se convierten a
-                    # ClusterIP para evitar conflictos con los NodePorts del namespace prod.
-                    for f in k8s/infra/*.yml; do
-                        sed -E \
-                            -e 's/namespace: circleguard$/namespace: circleguard-dev/g' \
-                            -e 's/type: NodePort/type: ClusterIP/g' \
-                            -e '/nodePort:/d' \
-                            "$f" | kubectl apply -f -
+                    mkdir -p trivy-reports
+                    SCAN_FAIL=0
+                    for svc in file gateway dashboard form notification promotion auth identity; do
+                        echo "Escaneando ${REGISTRY}/${svc}-service:${IMAGE_TAG}..."
+                        docker run --rm \
+                            -v /var/run/docker.sock:/var/run/docker.sock \
+                            -v "$PWD/trivy-reports":/out \
+                            -v trivy-db-cache:/root/.cache/trivy \
+                            aquasec/trivy:latest image \
+                            --severity HIGH,CRITICAL \
+                            --exit-code ${TRIVY_EXIT_CODE} \
+                            --format template \
+                            --template "@contrib/html.tpl" \
+                            -o /out/trivy-${svc}.html \
+                            ${REGISTRY}/${svc}-service:${IMAGE_TAG} || SCAN_FAIL=1
                     done
-
-                    # Esperar a que los componentes criticos de infra esten listos
-                    kubectl rollout status deployment/postgres -n circleguard-dev --timeout=120s || true
-                    kubectl rollout status deployment/redis    -n circleguard-dev --timeout=60s  || true
-                    kubectl rollout status deployment/kafka    -n circleguard-dev --timeout=90s  || true
-
-                    # Desplegar los 6 microservicios con namespace, tag :dev y NodePorts desplazados
-                    # a rango 310XX para no colisionar con los 300XX del namespace prod.
-                    # Reemplazos explícitos (sin backreferences) para compatibilidad con BusyBox sed.
-                    for f in k8s/services/*.yml; do
-                        sed \
-                            -e 's/namespace: circleguard$/namespace: circleguard-dev/g' \
-                            -e 's/:latest/:dev/g' \
-                            -e 's/nodePort: 30082/nodePort: 31082/g' \
-                            -e 's/nodePort: 30084/nodePort: 31084/g' \
-                            -e 's/nodePort: 30085/nodePort: 31085/g' \
-                            -e 's/nodePort: 30086/nodePort: 31086/g' \
-                            -e 's/nodePort: 30087/nodePort: 31087/g' \
-                            -e 's/nodePort: 30088/nodePort: 31088/g' \
-                            -e 's/nodePort: 30180/nodePort: 31180/g' \
-                            -e 's/nodePort: 30083/nodePort: 31083/g' \
-                            "$f" | kubectl apply -f -
-                    done
-
-                    echo "--- Recursos en namespace circleguard-dev ---"
-                    kubectl get all -n circleguard-dev
+                    if [ "${TRIVY_EXIT_CODE}" = "1" ] && [ "${SCAN_FAIL}" = "1" ]; then
+                        echo "Trivy encontró vulnerabilidades HIGH/CRITICAL — bloqueando pipeline."
+                        exit 1
+                    fi
+                    echo "Trivy scan completado (reportes en trivy-reports/)."
                 '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'trivy-reports/*.html', allowEmptyArchive: true
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Trivy IaC Scan') {
+            // Seguridad (Punto 8): escaneo de misconfiguraciones en manifests K8s y
+            // módulos Terraform. Usa modo "config" de Trivy (IaC/misconfig).
+            // TRIVY_EXIT_CODE=0 en dev → genera reportes sin bloquear el pipeline.
+            steps {
+                sh '''
+                    mkdir -p trivy-reports
+                    echo "Escaneando manifests k8s/ con Trivy config..."
+                    docker run --rm \
+                        -v "$PWD":/src \
+                        -v "$PWD/trivy-reports":/out \
+                        -v trivy-db-cache:/root/.cache/trivy \
+                        aquasec/trivy:latest config \
+                        --severity HIGH,CRITICAL \
+                        --exit-code ${TRIVY_EXIT_CODE} \
+                        --format template \
+                        --template "@contrib/html.tpl" \
+                        -o /out/trivy-iac-k8s.html \
+                        /src/k8s || true
+                    echo "Escaneando terraform/ con Trivy config..."
+                    docker run --rm \
+                        -v "$PWD":/src \
+                        -v "$PWD/trivy-reports":/out \
+                        -v trivy-db-cache:/root/.cache/trivy \
+                        aquasec/trivy:latest config \
+                        --severity HIGH,CRITICAL \
+                        --exit-code ${TRIVY_EXIT_CODE} \
+                        --format template \
+                        --template "@contrib/html.tpl" \
+                        -o /out/trivy-iac-terraform.html \
+                        /src/terraform || true
+                    echo "Trivy IaC scan completado (reportes en trivy-reports/)."
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'trivy-reports/trivy-iac-*.html', allowEmptyArchive: true
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Bootstrap Backend') {
+            steps {
+                sh 'bash terraform/scripts/bootstrap-backend.sh'
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Deploy Dev (Terraform)') {
+            steps {
+                dir('terraform/envs/dev') {
+                    sh 'terraform init -input=false'
+                    sh '''
+                        # Taint cluster if control-plane container is not running so terraform recreates it
+                        if ! docker inspect --format "{{.State.Running}}" circleguard-dev-control-plane 2>/dev/null | grep -q "true"; then
+                            echo "==> kind cluster container not running — tainting module.cluster for recreation"
+                            terraform taint -ignore-remote-version module.cluster.null_resource.cluster 2>/dev/null || true
+                        fi
+                    '''
+                    sh 'terraform apply -input=false -auto-approve -target=module.cluster'
+                }
+                sh 'bash terraform/scripts/load-images.sh dev'
+                dir('terraform/envs/dev') {
+                    sh 'terraform apply -input=false -auto-approve -parallelism=4 -var="image_tag=dev"'
+                }
             }
         }
 
@@ -416,18 +565,40 @@ pipeline {
 
         // ─────────────────────────────────────────────────────────────────
         stage('E2E Tests') {
+            // Suite E2E Karate — journeys cross-service reales (Punto 5).
+            // Journeys: A (acceso campus sano→GREEN), B (síntomas→RED), C (visitante),
+            //           + suite de humo (disponibilidad 8 servicios).
             // Prerrequisito: configurar en Jenkins las credenciales:
-            //   e2e-jwt-token  → JWT válido para el entorno dev
-            //   e2e-anon-id    → anonymousId del usuario de prueba
-            //   e2e-qr-token   → QR token válido para gateway
+            //   e2e-jwt-token  → JWT válido para el entorno dev (fallback si no hay creds de login)
+            //   e2e-anon-id    → anonymousId del usuario de prueba (fallback)
+            //   e2e-qr-token   → QR token pre-generado (opcional)
+            //   e2e-username   → usuario LDAP/local de prueba (opcional, para login real)
+            //   e2e-password   → contraseña (opcional)
             steps {
-                sh 'chmod +x e2e/run_e2e.sh'
                 withCredentials([
                     string(credentialsId: 'e2e-jwt-token',  variable: 'TEST_JWT'),
                     string(credentialsId: 'e2e-anon-id',    variable: 'TEST_ANON_ID'),
-                    string(credentialsId: 'e2e-qr-token',   variable: 'TEST_QR_TOKEN')
+                    string(credentialsId: 'e2e-qr-token',   variable: 'TEST_QR_TOKEN'),
+                    string(credentialsId: 'e2e-username',   variable: 'E2E_USERNAME'),
+                    string(credentialsId: 'e2e-password',   variable: 'E2E_PASSWORD')
                 ]) {
-                    sh 'bash e2e/run_e2e.sh'
+                    sh '''
+                        E2E_HOST=host.docker.internal \
+                        TEST_JWT=${TEST_JWT} \
+                        TEST_ANON_ID=${TEST_ANON_ID} \
+                        TEST_QR_TOKEN=${TEST_QR_TOKEN} \
+                        E2E_USERNAME=${E2E_USERNAME} \
+                        E2E_PASSWORD=${E2E_PASSWORD} \
+                        ./gradlew :e2e-tests:e2eTest --no-daemon
+                    '''
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'e2e-tests/build/karate-reports/**',
+                                     allowEmptyArchive: true
+                    junit testResults: 'e2e-tests/build/test-results/e2eTest/*.xml',
+                          allowEmptyResults: true
                 }
             }
         }
@@ -469,17 +640,39 @@ pipeline {
     post {
         always {
             echo "Pipeline finalizado: ${currentBuild.currentResult}"
-            sh '''
-                echo "Escalando deployments del namespace ${DEV_NS} a 0 replicas..."
-                kubectl scale deployment --all -n ${DEV_NS} --replicas=0 || true
-                kubectl get deployment -n ${DEV_NS} || true
-            '''
         }
         success {
             echo "Dev pipeline EXITOSO — imagenes :dev desplegadas en namespace: circleguard-dev"
         }
         failure {
             echo "Dev pipeline FALLIDO — revisar logs anteriores"
+            sh 'kind delete cluster --name circleguard-dev 2>/dev/null || true'
+            emailext(
+                subject: "❌ FALLÓ ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
+                body: """Pipeline de desarrollo fallido.
+
+Job     : ${env.JOB_NAME}
+Build   : #${env.BUILD_NUMBER}
+Branch  : ${env.GIT_BRANCH}
+Commit  : ${env.GIT_COMMIT}
+Consola : ${env.BUILD_URL}console
+""",
+                to: 'devops@circleguard.local'
+            )
+        }
+        unstable {
+            emailext(
+                subject: "⚠️ INESTABLE ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
+                body: """Pipeline de desarrollo inestable (Quality Gate degradado o tests con advertencias).
+
+Job     : ${env.JOB_NAME}
+Build   : #${env.BUILD_NUMBER}
+Branch  : ${env.GIT_BRANCH}
+Commit  : ${env.GIT_COMMIT}
+Consola : ${env.BUILD_URL}console
+""",
+                to: 'devops@circleguard.local'
+            )
         }
     }
 }

@@ -10,13 +10,20 @@ pipeline {
     environment {
         REGISTRY                              = 'circleguard'
         PROD_NS                               = 'circleguard'
-        GRADLE_OPTS                           = '-Dorg.gradle.daemon=false'
+        GRADLE_OPTS                           = '-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx512m'
         DOCKER_HOST                           = 'unix:///var/run/docker.sock'
         TESTCONTAINERS_RYUK_DISABLED          = 'true'
         TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE = '/var/run/docker.sock'
         // kubeconfig parcheado con host.docker.internal en lugar de 127.0.0.1
         // (el kubeconfig original del host no es accesible desde dentro del contenedor)
-        KUBECONFIG                            = '/var/jenkins_home/kube-jenkins.conf'
+        KUBECONFIG                            = "${WORKSPACE}/terraform/envs/prod/kubeconfig-circleguard-prod.yaml"
+        // CI/CD avanzado — SonarQube y Trivy
+        SONAR_HOST_URL                        = 'http://host.docker.internal:9000'
+        LOCALSTACK_HOST                       = 'host.docker.internal'
+        TF_VAR_localstack_host                = 'host.docker.internal'
+        IMAGE_TAG                             = 'latest'
+        // TRIVY_EXIT_CODE=1 en prod: BLOQUEA el pipeline si encuentra HIGH/CRITICAL
+        TRIVY_EXIT_CODE                       = '1'
     }
 
     stages {
@@ -36,6 +43,13 @@ pipeline {
                 // Descarga gradle-8.14-bin.zip una sola vez antes de los builds paralelos.
                 // Sin esto, los 6 procesos compiten por el lock del archivo y hacen timeout.
                 sh './gradlew --version --no-daemon'
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Start LocalStack') {
+            steps {
+                sh 'docker compose -f terraform/scripts/localstack-compose.yml up -d --no-recreate 2>/dev/null || docker compose -f terraform/scripts/localstack-compose.yml up -d'
             }
         }
 
@@ -197,7 +211,19 @@ pipeline {
             // En macOS con Docker Desktop el proxy de socket impide la detección de Testcontainers.
             parallel {
                 stage('integration:file-service') {
-                    steps { echo 'Sin tests de integración en file-service — etapa omitida.' }
+                    steps {
+                        sh '''
+                            ./gradlew :services:circleguard-file-service:test \
+                                --tests "com.circleguard.file.integration.*" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-file-service/build/test-results/test/*.xml'
+                        }
+                    }
                 }
                 stage('integration:gateway-service') {
                     steps {
@@ -215,7 +241,19 @@ pipeline {
                     }
                 }
                 stage('integration:dashboard-service') {
-                    steps { echo 'Sin tests de integración en dashboard-service — etapa omitida.' }
+                    steps {
+                        sh '''
+                            ./gradlew :services:circleguard-dashboard-service:test \
+                                --tests "com.circleguard.dashboard.integration.*" \
+                                --no-daemon
+                        '''
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true,
+                                  testResults: 'services/circleguard-dashboard-service/build/test-results/test/*.xml'
+                        }
+                    }
                 }
                 stage('integration:form-service') {
                     steps {
@@ -289,6 +327,55 @@ pipeline {
         }
 
         // ─────────────────────────────────────────────────────────────────
+        stage('Coverage Reports') {
+            // Genera y publica reportes JaCoCo de los 8 microservicios.
+            // Requiere Jenkins Coverage Plugin instalado.
+            steps {
+                sh './gradlew jacocoTestReport --no-daemon || true'
+            }
+            post {
+                always {
+                    recordCoverage(
+                        tools: [[parser: 'JACOCO',
+                                 pattern: 'services/*/build/reports/jacoco/test/jacocoTestReport.xml']],
+                        sourceCodeRetention: 'EVERY_BUILD'
+                    )
+                    archiveArtifacts artifacts: 'services/*/build/reports/jacoco/**/*.html',
+                                     allowEmptyArchive: true
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('SonarQube Analysis') {
+            // Analiza los 8 microservicios con SonarQube leyendo los reportes JaCoCo XML
+            // generados en Unit Tests / Integration Tests.
+            // Requiere: plugin SonarQube Scanner en Jenkins + credencial 'sonar-token'
+            //           + servidor 'sonarqube' configurado en Jenkins > Configure System.
+            steps {
+                withSonarQubeEnv('sonarqube') {
+                    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                        sh './gradlew sonar --no-daemon -Dsonar.token=${SONAR_TOKEN} -Dsonar.host.url=${SONAR_HOST_URL}'
+                    }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Quality Gate') {
+            // Espera el veredicto del Quality Gate de SonarQube vía webhook.
+            // abortPipeline: true en prod — BLOQUEA el release si el Quality Gate falla.
+            // Ningún código con deuda técnica crítica o cobertura insuficiente llega a producción.
+            // Requiere: webhook en SonarQube > Administration > Webhooks apuntando a
+            //           http://JENKINS_URL/sonarqube-webhook/
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
         stage('Docker Build :latest') {
             parallel {
                 stage('docker:file-service') {
@@ -335,38 +422,116 @@ pipeline {
         }
 
         // ─────────────────────────────────────────────────────────────────
-        stage('Deploy Master') {
+        stage('Trivy Scan') {
+            // Escanea las 8 imágenes Docker con Trivy buscando vulnerabilidades HIGH y CRITICAL.
+            // TRIVY_EXIT_CODE=1 en prod → BLOQUEA el pipeline si alguna imagen tiene HIGH/CRITICAL.
+            // Para aceptar un CVE conscientemente, agregar el CVE a .trivyignore con justificación.
             steps {
                 sh '''
-                    # Crear namespace de producción si no existe (idempotente)
-                    kubectl apply -f k8s/00-namespace.yml
-
-                    # Desplegar infraestructura al namespace circleguard (producción).
-                    # Los manifests ya tienen namespace: circleguard y type: NodePort —
-                    # NO se aplica ninguna transformación sed.
-                    # Se aplican en orden explícito por dependencia (kafka requiere zookeeper).
-                    kubectl apply -f k8s/infra/01-configmap.yml
-                    kubectl apply -f k8s/infra/02-secrets.yml
-                    kubectl apply -f k8s/infra/03-postgres.yml
-                    kubectl apply -f k8s/infra/04-neo4j.yml
-                    kubectl apply -f k8s/infra/05-zookeeper.yml
-                    kubectl apply -f k8s/infra/06-kafka.yml
-                    kubectl apply -f k8s/infra/07-redis.yml
-                    kubectl apply -f k8s/infra/08-mailhog.yml
-                    kubectl apply -f k8s/infra/09-openldap.yml
-
-                    # Esperar a que los componentes criticos de infra esten listos
-                    kubectl rollout status deployment/postgres -n circleguard --timeout=120s || true
-                    kubectl rollout status deployment/redis    -n circleguard --timeout=60s  || true
-                    kubectl rollout status deployment/kafka    -n circleguard --timeout=90s  || true
-
-                    # Desplegar los 8 microservicios — manifests ya en namespace circleguard,
-                    # tag :latest, NodePorts 300XX. Sin sed.
-                    kubectl apply -f k8s/services/
-
-                    echo "--- Recursos en namespace circleguard (producción) ---"
-                    kubectl get all -n circleguard
+                    mkdir -p trivy-reports
+                    SCAN_FAIL=0
+                    for svc in file gateway dashboard form notification promotion auth identity; do
+                        echo "Escaneando ${REGISTRY}/${svc}-service:${IMAGE_TAG}..."
+                        docker run --rm \
+                            -v /var/run/docker.sock:/var/run/docker.sock \
+                            -v "$PWD/trivy-reports":/out \
+                            -v "$PWD/.trivyignore":/.trivyignore \
+                            -v trivy-db-cache:/root/.cache/trivy \
+                            aquasec/trivy:latest image \
+                            --severity HIGH,CRITICAL \
+                            --exit-code ${TRIVY_EXIT_CODE} \
+                            --ignorefile /.trivyignore \
+                            --format template \
+                            --template "@contrib/html.tpl" \
+                            -o /out/trivy-${svc}.html \
+                            ${REGISTRY}/${svc}-service:${IMAGE_TAG} || SCAN_FAIL=1
+                    done
+                    if [ "${TRIVY_EXIT_CODE}" = "1" ] && [ "${SCAN_FAIL}" = "1" ]; then
+                        echo "Trivy encontró vulnerabilidades HIGH/CRITICAL — bloqueando release a producción."
+                        echo "Opciones: (1) parchear la imagen base, (2) agregar CVE a .trivyignore con justificación."
+                        exit 1
+                    fi
+                    echo "Trivy scan completado — sin vulnerabilidades HIGH/CRITICAL bloqueantes."
                 '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'trivy-reports/*.html', allowEmptyArchive: true
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Trivy IaC Scan') {
+            // Seguridad (Punto 8): escaneo de misconfiguraciones en manifests K8s y
+            // módulos Terraform. TRIVY_EXIT_CODE=1 en prod → bloquea si hay HIGH/CRITICAL.
+            steps {
+                sh '''
+                    mkdir -p trivy-reports
+                    IAC_FAIL=0
+                    echo "Escaneando manifests k8s/ con Trivy config..."
+                    docker run --rm \
+                        -v "$PWD":/src \
+                        -v "$PWD/trivy-reports":/out \
+                        -v trivy-db-cache:/root/.cache/trivy \
+                        aquasec/trivy:latest config \
+                        --severity HIGH,CRITICAL \
+                        --exit-code ${TRIVY_EXIT_CODE} \
+                        --format template \
+                        --template "@contrib/html.tpl" \
+                        -o /out/trivy-iac-k8s.html \
+                        /src/k8s || IAC_FAIL=1
+                    echo "Escaneando terraform/ con Trivy config..."
+                    docker run --rm \
+                        -v "$PWD":/src \
+                        -v "$PWD/trivy-reports":/out \
+                        -v trivy-db-cache:/root/.cache/trivy \
+                        aquasec/trivy:latest config \
+                        --severity HIGH,CRITICAL \
+                        --exit-code ${TRIVY_EXIT_CODE} \
+                        --format template \
+                        --template "@contrib/html.tpl" \
+                        -o /out/trivy-iac-terraform.html \
+                        /src/terraform || IAC_FAIL=1
+                    if [ "${TRIVY_EXIT_CODE}" = "1" ] && [ "${IAC_FAIL}" = "1" ]; then
+                        echo "Trivy IaC encontró misconfiguraciones HIGH/CRITICAL — bloqueando release a producción."
+                        exit 1
+                    fi
+                    echo "Trivy IaC scan completado — sin misconfiguraciones HIGH/CRITICAL bloqueantes."
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'trivy-reports/trivy-iac-*.html', allowEmptyArchive: true
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Bootstrap Backend') {
+            steps {
+                sh 'bash terraform/scripts/bootstrap-backend.sh'
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Approval (Prod)') {
+            steps {
+                input message: 'Desplegar a produccion?', ok: 'Desplegar'
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        stage('Deploy Master (Terraform)') {
+            steps {
+                dir('terraform/envs/prod') {
+                    sh 'terraform init -input=false'
+                    sh 'terraform apply -input=false -auto-approve -target=module.cluster'
+                }
+                sh 'bash terraform/scripts/load-images.sh prod'
+                dir('terraform/envs/prod') {
+                    sh 'terraform apply -input=false -auto-approve -var="image_tag=latest"'
+                }
             }
         }
 
@@ -405,24 +570,43 @@ pipeline {
 
         // ─────────────────────────────────────────────────────────────────
         stage('E2E Tests') {
-            // Reutiliza las mismas credenciales Jenkins configuradas para los pipelines dev y stage.
-            // Las variables E2E_PORT_* apuntan explícitamente a los NodePorts 300XX de producción.
+            // Suite E2E Karate — journeys cross-service reales contra namespace prod (300XX).
+            // Journeys: A (acceso campus sano→GREEN), B (síntomas→RED), C (visitante),
+            //           + suite de humo (disponibilidad 8 servicios).
+            // Reutiliza las credenciales Jenkins ya configuradas para dev y stage.
             steps {
-                sh 'chmod +x e2e/run_e2e.sh'
                 withCredentials([
                     string(credentialsId: 'e2e-jwt-token',  variable: 'TEST_JWT'),
                     string(credentialsId: 'e2e-anon-id',    variable: 'TEST_ANON_ID'),
-                    string(credentialsId: 'e2e-qr-token',   variable: 'TEST_QR_TOKEN')
+                    string(credentialsId: 'e2e-qr-token',   variable: 'TEST_QR_TOKEN'),
+                    string(credentialsId: 'e2e-username',   variable: 'E2E_USERNAME'),
+                    string(credentialsId: 'e2e-password',   variable: 'E2E_PASSWORD')
                 ]) {
                     sh '''
+                        E2E_HOST=host.docker.internal \
                         E2E_PORT_NOTIFICATION=30082 \
+                        E2E_PORT_IDENTITY=30083 \
                         E2E_PORT_DASHBOARD=30084 \
                         E2E_PORT_FILE=30085 \
                         E2E_PORT_FORM=30086 \
                         E2E_PORT_GATEWAY=30087 \
                         E2E_PORT_PROMOTION=30088 \
-                        bash e2e/run_e2e.sh
+                        E2E_PORT_AUTH=30180 \
+                        TEST_JWT=${TEST_JWT} \
+                        TEST_ANON_ID=${TEST_ANON_ID} \
+                        TEST_QR_TOKEN=${TEST_QR_TOKEN} \
+                        E2E_USERNAME=${E2E_USERNAME} \
+                        E2E_PASSWORD=${E2E_PASSWORD} \
+                        ./gradlew :e2e-tests:e2eTest --no-daemon
                     '''
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'e2e-tests/build/karate-reports/**',
+                                     allowEmptyArchive: true
+                    junit testResults: 'e2e-tests/build/test-results/e2eTest/*.xml',
+                          allowEmptyResults: true
                 }
             }
         }
@@ -462,14 +646,47 @@ pipeline {
         }
 
         // ─────────────────────────────────────────────────────────────────
+        stage('Security Tests (OWASP ZAP)') {
+            // Escaneo pasivo de seguridad con OWASP ZAP contra los 8 servicios desplegados.
+            // Modo baseline (passive): no lanza ataques activos — solo analiza tráfico pasivo.
+            // ZAP_FAIL_ON=High: bloquea el release solo si hay alertas de severidad High.
+            // Para suprimir falsos positivos de API, editar zap/rules.tsv con justificación.
+            // Los reportes HTML se archivan como artefactos para auditoría.
+            steps {
+                sh 'chmod +x zap/run_zap.sh'
+                sh '''
+                    ZAP_HOST=host.docker.internal \
+                    ZAP_FAIL_ON=High \
+                    ZAP_TIMEOUT=120 \
+                    E2E_HOST=host.docker.internal \
+                    bash zap/run_zap.sh
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'zap/reports/*.html,zap/reports/*.json',
+                                     allowEmptyArchive: true
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
         stage('Release Notes') {
             // Genera un artefacto Markdown con las Release Notes de esta versión.
             // Clasifica commits por tipo (Conventional Commits: feat, fix, docs, otros).
             // Crea un tag Git ligero en el commit actual para marcar el release.
             steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'github-credentials',
+                    usernameVariable: 'GIT_USER',
+                    passwordVariable: 'GIT_TOKEN'
+                )]) {
                 sh '''
-                    VERSION="v1.0.${BUILD_NUMBER}"
-                    echo "Generando Release Notes para ${VERSION}..."
+                    # Versionado semántico automático: lee commits desde el último tag vX.Y.Z
+                    # y calcula MAJOR/MINOR/PATCH según Conventional Commits (feat/fix/BREAKING).
+                    chmod +x scripts/semver.sh
+                    VERSION=$(bash scripts/semver.sh)
+                    echo "Generando Release Notes para ${VERSION} (semver desde Conventional Commits)..."
 
                     # Determinar el rango de commits desde el tag anterior
                     PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
@@ -573,12 +790,15 @@ pipeline {
                         echo ""
                         echo "- [x] Build JARs (8 servicios)"
                         echo "- [x] Unit Tests (8 servicios)"
-                        echo "- [x] Integration Tests (6 servicios activos)"
+                        echo "- [x] Integration Tests (8 servicios)"
+                        echo "- [x] Coverage Reports (JaCoCo + jest)"
                         echo "- [x] Docker Build :latest (8 servicios)"
+                        echo "- [x] Trivy Scan (vulnerabilidades HIGH/CRITICAL)"
                         echo "- [x] Deploy Kubernetes namespace circleguard"
                         echo "- [x] Smoke Tests (8 servicios, NodePorts 300XX)"
-                        echo "- [x] E2E Tests (5 flujos)"
+                        echo "- [x] E2E Tests (Karate journeys cross-service)"
                         echo "- [x] Performance Tests (Locust, 50 usuarios, 60s)"
+                        echo "- [x] Security Tests (OWASP ZAP baseline, 8 servicios)"
                         echo ""
                         echo "---"
                         echo ""
@@ -588,10 +808,16 @@ pipeline {
                     echo "Release Notes generadas: release-notes-${VERSION}.md"
                     cat release-notes-${VERSION}.md
 
-                    # Crear tag Git ligero para marcar el release en el historial
+                    # Crear y pushear tag Git para marcar el release en el historial
+                    git config user.email "jenkins@circleguard.edu"
+                    git config user.name "Jenkins CI"
                     git tag ${VERSION} || true
                     echo "Tag Git creado: ${VERSION}"
+                    REMOTE_URL=$(git remote get-url origin | sed "s|https://|https://${GIT_USER}:${GIT_TOKEN}@|")
+                    git push "${REMOTE_URL}" ${VERSION} || true
+                    echo "Tag Git pusheado al remoto: ${VERSION}"
                 '''
+                } // withCredentials
                 archiveArtifacts artifacts: 'release-notes-*.md', allowEmptyArchive: false
             }
         }
@@ -601,17 +827,41 @@ pipeline {
     post {
         always {
             echo "Pipeline finalizado: ${currentBuild.currentResult}"
-            sh '''
-                echo "Escalando deployments del namespace ${PROD_NS} a 0 replicas..."
-                kubectl scale deployment --all -n ${PROD_NS} --replicas=0 || true
-                kubectl get deployment -n ${PROD_NS} || true
-            '''
         }
         success {
             echo "Master pipeline EXITOSO — imagenes :latest desplegadas en namespace: circleguard | Release Notes archivadas"
         }
         failure {
             echo "Master pipeline FALLIDO — revisar logs anteriores"
+            sh 'kind delete cluster --name circleguard-prod 2>/dev/null || true'
+            emailext(
+                subject: "🚨 FALLÓ PRODUCCIÓN ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
+                body: """ALERTA: Pipeline de producción fallido.
+
+Job     : ${env.JOB_NAME}
+Build   : #${env.BUILD_NUMBER}
+Branch  : ${env.GIT_BRANCH}
+Commit  : ${env.GIT_COMMIT}
+Consola : ${env.BUILD_URL}console
+
+Verificar: Quality Gate, Trivy Scan, o etapa de despliegue.
+""",
+                to: 'devops@circleguard.local'
+            )
+        }
+        unstable {
+            emailext(
+                subject: "⚠️ INESTABLE PRODUCCIÓN ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
+                body: """Pipeline de producción inestable (Quality Gate degradado o Trivy con advertencias).
+
+Job     : ${env.JOB_NAME}
+Build   : #${env.BUILD_NUMBER}
+Branch  : ${env.GIT_BRANCH}
+Commit  : ${env.GIT_COMMIT}
+Consola : ${env.BUILD_URL}console
+""",
+                to: 'devops@circleguard.local'
+            )
         }
     }
 }

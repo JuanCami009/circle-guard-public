@@ -99,9 +99,9 @@ resource "kubernetes_deployment_v1" "neo4j" {
               path = "/"
               port = 7474
             }
-            initial_delay_seconds = 30
-            period_seconds        = 10
-            failure_threshold     = 12
+            initial_delay_seconds = 60
+            period_seconds        = 15
+            failure_threshold     = 20
           }
 
           resources {

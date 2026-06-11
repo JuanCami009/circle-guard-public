@@ -41,4 +41,22 @@ resource "helm_release" "redis" {
     name  = "master.persistence.enabled"
     value = "false"
   }
+
+  # Explicit resources — prevents BestEffort QoS (first to be OOMKilled on memory-starved node)
+  set {
+    name  = "master.resources.requests.memory"
+    value = "64Mi"
+  }
+  set {
+    name  = "master.resources.limits.memory"
+    value = "128Mi"
+  }
+  set {
+    name  = "master.resources.requests.cpu"
+    value = "50m"
+  }
+  set {
+    name  = "master.resources.limits.cpu"
+    value = "200m"
+  }
 }

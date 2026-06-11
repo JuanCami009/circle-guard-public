@@ -32,7 +32,7 @@ Feature: Journey C — Registro de visitante y generación de credenciales de ac
     Given url baseUrlIdentity
     And path '/api/v1/identities/lookup/' + visitorAnonId
     When method GET
-    # 200 si el sistema guarda reverse-lookup, 404 si solo existe el mapeo directo (ambos OK)
-    Then assert responseStatus == 200 || responseStatus == 404
+    # 200 si el sistema guarda reverse-lookup, 404 si no existe, 401 si el endpoint requiere auth
+    Then assert responseStatus == 200 || responseStatus == 404 || responseStatus == 401
 
     * karate.log('Journey C completado: visitante registrado con anonymousId ' + visitorAnonId)

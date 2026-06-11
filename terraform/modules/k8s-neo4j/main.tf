@@ -64,11 +64,6 @@ resource "kubernetes_deployment_v1" "neo4j" {
           }
 
           env {
-            name  = "NEO4J_PLUGINS"
-            value = "[\"apoc\"]"
-          }
-
-          env {
             name  = "NEO4J_dbms_connector_bolt_listen__address"
             value = ":7687"
           }

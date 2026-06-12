@@ -92,7 +92,7 @@ for svc in "${!SERVICES[@]}"; do
 
     zap_args="zap-baseline.py -t ${target_url} ${ZAP_LEVEL_FLAG} -r zap-${svc}.html -J zap-${svc}.json -d"
     if [ -f "$RULES_FILE" ]; then
-        zap_args="$zap_args -c /zap/wrk/rules.tsv"
+        zap_args="$zap_args -c /tmp/rules.tsv"
     fi
 
     docker rm -f "${container_name}" 2>/dev/null || true
@@ -100,7 +100,7 @@ for svc in "${!SERVICES[@]}"; do
     docker create --name "${container_name}" --network host ${ZAP_IMAGE} ${zap_args} >/dev/null
 
     if [ -f "$RULES_FILE" ]; then
-        docker cp "$RULES_FILE" "${container_name}:/zap/wrk/rules.tsv" 2>/dev/null || true
+        docker cp "$RULES_FILE" "${container_name}:/tmp/rules.tsv" 2>/dev/null || true
     fi
 
     zap_exit=0

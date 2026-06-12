@@ -469,8 +469,8 @@ pipeline {
                     # Bind mounts of workspace paths create empty dirs on the Docker host.
                     # Solution: tar-pipe workspace IaC files into a named volume, then scan from that volume.
                     docker run --rm -v trivy-iac-src:/workspace alpine sh -c \
-                        "rm -rf /workspace/k8s /workspace/terraform 2>/dev/null || true"
-                    tar -C "$PWD" -czf - k8s/ terraform/ | \
+                        "rm -rf /workspace/k8s /workspace/terraform /workspace/.trivyignore 2>/dev/null || true"
+                    tar -C "$PWD" -czf - k8s/ terraform/ .trivyignore | \
                         docker run --rm -i -v trivy-iac-src:/workspace \
                         alpine tar -xzf - -C /workspace
 

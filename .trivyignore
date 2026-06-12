@@ -40,3 +40,8 @@ CVE-2026-40973
 # lz4-java: informacion disclosure via buffer insuficiente — status "affected"
 # sin version de fix publicada por el upstream (lz4-java). Revisar al actualizar kafka-clients.
 CVE-2025-66566
+
+# AWS-0132: SSE-KMS con CMK requerido por Trivy. LocalStack Community no soporta KMS (tier Pro).
+# AES256 (SSE-S3) activo. Revisar si se migra a AWS real o LocalStack Pro.
+AVD-AWS-0132
+AWS-0132

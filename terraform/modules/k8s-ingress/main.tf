@@ -17,12 +17,16 @@ resource "helm_release" "ingress_nginx" {
   chart            = "ingress-nginx"
   namespace        = "ingress-nginx"
   create_namespace = true
-  wait             = true
-  timeout          = 120
+  wait             = false
+  timeout          = 300
 
   set {
     name  = "controller.service.type"
     value = "NodePort"
+  }
+  set {
+    name  = "controller.admissionWebhooks.enabled"
+    value = "false"
   }
   set {
     name  = "controller.service.nodePorts.http"

@@ -1,4 +1,6 @@
 resource "kubernetes_deployment_v1" "this" {
+  wait_for_rollout = false
+
   metadata {
     name      = var.name
     namespace = var.namespace

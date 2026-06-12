@@ -5,6 +5,7 @@
 # ---------------------------------------------------------------------------
 
 resource "kubernetes_deployment_v1" "openldap" {
+  wait_for_rollout = false
   metadata {
     name      = "openldap"
     namespace = var.namespace

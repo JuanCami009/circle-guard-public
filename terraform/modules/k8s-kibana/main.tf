@@ -3,6 +3,7 @@
 # ---------------------------------------------------------------------------
 
 resource "kubernetes_deployment_v1" "kibana" {
+  wait_for_rollout = false
   metadata {
     name      = "kibana"
     namespace = var.namespace

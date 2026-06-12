@@ -17,6 +17,7 @@ resource "kubernetes_config_map_v1" "postgres_init_sql" {
 }
 
 resource "kubernetes_deployment_v1" "postgres" {
+  wait_for_rollout = false
   metadata {
     name      = "postgres"
     namespace = var.namespace

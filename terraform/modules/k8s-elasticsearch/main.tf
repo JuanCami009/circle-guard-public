@@ -4,6 +4,7 @@
 # ---------------------------------------------------------------------------
 
 resource "kubernetes_deployment_v1" "elasticsearch" {
+  wait_for_rollout = false
   metadata {
     name      = "elasticsearch"
     namespace = var.namespace

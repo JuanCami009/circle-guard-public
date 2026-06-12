@@ -6,6 +6,7 @@
 # ---------------------------------------------------------------------------
 
 resource "kubernetes_deployment_v1" "zipkin" {
+  wait_for_rollout = false
   metadata {
     name      = "zipkin"
     namespace = var.namespace

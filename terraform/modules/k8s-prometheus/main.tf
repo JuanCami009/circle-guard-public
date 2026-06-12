@@ -152,6 +152,7 @@ resource "kubernetes_config_map_v1" "prometheus_config" {
 
 # ── Deployment ──────────────────────────────────────────────────────────────
 resource "kubernetes_deployment_v1" "prometheus" {
+  wait_for_rollout = false
   metadata {
     name      = "prometheus"
     namespace = var.namespace

@@ -54,6 +54,7 @@ resource "kubernetes_config_map_v1" "logstash_pipeline" {
 }
 
 resource "kubernetes_deployment_v1" "logstash" {
+  wait_for_rollout = false
   metadata {
     name      = "logstash"
     namespace = var.namespace

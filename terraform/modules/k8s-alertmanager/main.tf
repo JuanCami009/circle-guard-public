@@ -56,6 +56,7 @@ resource "kubernetes_config_map_v1" "alertmanager_config" {
 }
 
 resource "kubernetes_deployment_v1" "alertmanager" {
+  wait_for_rollout = false
   metadata {
     name      = "alertmanager"
     namespace = var.namespace

@@ -111,6 +111,7 @@ resource "kubernetes_config_map_v1" "grafana_dashboard_per_service" {
 
 # ── Deployment ──────────────────────────────────────────────────────────────
 resource "kubernetes_deployment_v1" "grafana" {
+  wait_for_rollout = false
   metadata {
     name      = "grafana"
     namespace = var.namespace

@@ -39,6 +39,14 @@ resource "kubernetes_deployment_v1" "this" {
               "sh", "-c",
               "until nc -z ${init_container.value.host} ${init_container.value.port}; do echo 'Waiting for ${init_container.value.host}...'; sleep 5; done; echo '${init_container.value.host} is ready.'"
             ]
+            security_context {
+              run_as_non_root            = true
+              run_as_user                = 65534
+              allow_privilege_escalation = false
+              capabilities {
+                drop = ["ALL"]
+              }
+            }
           }
         }
 
@@ -113,6 +121,14 @@ resource "kubernetes_deployment_v1" "this" {
             content {
               name  = env.key
               value = env.value
+            }
+          }
+
+          security_context {
+            run_as_non_root            = true
+            allow_privilege_escalation = false
+            capabilities {
+              drop = ["ALL"]
             }
           }
 

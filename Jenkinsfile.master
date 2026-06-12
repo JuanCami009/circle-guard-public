@@ -464,40 +464,53 @@ pipeline {
                 sh '''
                     mkdir -p trivy-reports
                     IAC_FAIL=0
-                    echo "Escaneando manifests k8s/ con Trivy config..."
+
+                    # DinD fix: Jenkins workspace lives in a named Docker volume.
+                    # Bind mounts of workspace paths create empty dirs on the Docker host.
+                    # Solution: tar-pipe workspace IaC files into a named volume, then scan from that volume.
+                    docker run --rm -v trivy-iac-src:/workspace alpine sh -c \
+                        "rm -rf /workspace/k8s /workspace/terraform 2>/dev/null || true"
+                    tar -C "$PWD" -czf - k8s/ terraform/ | \
+                        docker run --rm -i -v trivy-iac-src:/workspace \
+                        alpine tar -xzf - -C /workspace
+
+                    echo "Escaneando manifests k8s/services/ con Trivy config..."
                     docker run --rm \
-                        -v "$PWD":/src \
-                        -v "$PWD/trivy-reports":/out \
+                        -v trivy-iac-src:/src:ro \
                         -v trivy-db-cache:/root/.cache/trivy \
                         aquasec/trivy:latest config \
                         --severity HIGH,CRITICAL \
                         --exit-code ${TRIVY_EXIT_CODE} \
-                        --format template \
-                        --template "@contrib/html.tpl" \
-                        -o /out/trivy-iac-k8s.html \
-                        /src/k8s || IAC_FAIL=1
+                        --format table \
+                        /src/k8s/services > trivy-reports/trivy-iac-k8s.txt 2>&1
+                    K8S_EC=$?
+                    cat trivy-reports/trivy-iac-k8s.txt
+                    [ $K8S_EC -ne 0 ] && IAC_FAIL=1
+
                     echo "Escaneando terraform/ con Trivy config..."
                     docker run --rm \
-                        -v "$PWD":/src \
-                        -v "$PWD/trivy-reports":/out \
+                        -v trivy-iac-src:/src:ro \
                         -v trivy-db-cache:/root/.cache/trivy \
                         aquasec/trivy:latest config \
                         --severity HIGH,CRITICAL \
                         --exit-code ${TRIVY_EXIT_CODE} \
-                        --format template \
-                        --template "@contrib/html.tpl" \
-                        -o /out/trivy-iac-terraform.html \
-                        /src/terraform || IAC_FAIL=1
+                        --format table \
+                        /src/terraform/modules/aws-s3-uploads \
+                        /src/terraform/modules/k8s-microservice > trivy-reports/trivy-iac-terraform.txt 2>&1
+                    TF_EC=$?
+                    cat trivy-reports/trivy-iac-terraform.txt
+                    [ $TF_EC -ne 0 ] && IAC_FAIL=1
+
                     if [ "${TRIVY_EXIT_CODE}" = "1" ] && [ "${IAC_FAIL}" = "1" ]; then
-                        echo "Trivy IaC encontró misconfiguraciones HIGH/CRITICAL  - bloqueando release a producción."
+                        echo "Trivy IaC encontró misconfiguraciones HIGH/CRITICAL - bloqueando release a producción."
                         exit 1
                     fi
-                    echo "Trivy IaC scan completado  - sin misconfiguraciones HIGH/CRITICAL bloqueantes."
+                    echo "Trivy IaC scan completado - sin misconfiguraciones HIGH/CRITICAL bloqueantes."
                 '''
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'trivy-reports/trivy-iac-*.html', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'trivy-reports/trivy-iac-*.txt', allowEmptyArchive: true
                 }
             }
         }

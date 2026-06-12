@@ -85,34 +85,34 @@ for svc in "${!SERVICES[@]}"; do
         continue
     fi
 
-    # No se usa -v porque en DinD (Docker socket passthrough) el daemon del host
-    # no puede acceder a paths dentro del contenedor Jenkins.
-    # Patrón: docker create → docker cp rules → docker start → docker cp reports → docker rm
-    container_name="zap-scan-${svc}-$$"
+    # En DinD (Docker socket passthrough), bind-mounts de paths del Jenkins container no funcionan.
+    # ZAP requiere /zap/wrk como mount real (os.path.ismount). Volúmenes anónimos (docker create sin -v)
+    # usan overlayfs con mismo device number → ismount devuelve False. Named volumes usan driver local
+    # con filesystem separado → ismount devuelve True.
+    # Patrón: named volume → docker run (copy rules) → docker run (ZAP) → docker run (extract) → volume rm
+    vol_name="zap-wrk-${svc}-$$"
+    docker volume rm "$vol_name" 2>/dev/null || true
+    docker volume create "$vol_name" >/dev/null
+
+    if [ -f "$RULES_FILE" ]; then
+        docker run --rm -i -v "${vol_name}:/zap/wrk" alpine sh -c 'cat > /zap/wrk/rules.tsv' < "$RULES_FILE"
+    fi
 
     zap_args="zap-baseline.py -t ${target_url} ${ZAP_LEVEL_FLAG} -r zap-${svc}.html -J zap-${svc}.json -d"
     if [ -f "$RULES_FILE" ]; then
-        zap_args="$zap_args -c /tmp/rules.tsv"
-    fi
-
-    docker rm -f "${container_name}" 2>/dev/null || true
-    # shellcheck disable=SC2086
-    docker create --name "${container_name}" --network host ${ZAP_IMAGE} ${zap_args} >/dev/null
-
-    if [ -f "$RULES_FILE" ]; then
-        docker cp "$RULES_FILE" "${container_name}:/tmp/rules.tsv" 2>/dev/null || true
+        zap_args="$zap_args -c /zap/wrk/rules.tsv"
     fi
 
     zap_exit=0
     t_start=$(date +%s)
-    timeout "${ZAP_TIMEOUT}" docker start -a "${container_name}" || zap_exit=$?
+    # shellcheck disable=SC2086
+    timeout "${ZAP_TIMEOUT}" docker run --rm --network host -v "${vol_name}:/zap/wrk" ${ZAP_IMAGE} ${zap_args} || zap_exit=$?
     t_end=$(date +%s)
     elapsed=$(( t_end - t_start ))
 
-    # Extraer reportes del contenedor al workspace
-    docker cp "${container_name}:/zap/wrk/zap-${svc}.html" "${REPORTS_DIR}/" 2>/dev/null || true
-    docker cp "${container_name}:/zap/wrk/zap-${svc}.json" "${REPORTS_DIR}/" 2>/dev/null || true
-    docker rm -f "${container_name}" 2>/dev/null || true
+    docker run --rm -v "${vol_name}:/zap/wrk" alpine cat "/zap/wrk/zap-${svc}.html" > "${REPORTS_DIR}/zap-${svc}.html" 2>/dev/null || true
+    docker run --rm -v "${vol_name}:/zap/wrk" alpine cat "/zap/wrk/zap-${svc}.json" > "${REPORTS_DIR}/zap-${svc}.json" 2>/dev/null || true
+    docker volume rm "$vol_name" >/dev/null 2>&1 || true
 
     # ZAP exit codes: 0 = sin alertas, 1 = advertencias, 2 = errores/alta
     if [ "$zap_exit" -eq 0 ]; then

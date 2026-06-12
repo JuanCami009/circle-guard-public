@@ -21,6 +21,7 @@ spec:
             - containerPort: 8084
           securityContext:
             runAsNonRoot: true
+            readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
               drop:
@@ -57,6 +58,9 @@ spec:
               value: "8084"
             - name: SPRING_DATASOURCE_URL
               value: "jdbc:postgresql://postgres-svc:5432/circleguard_dashboard"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           resources:
             requests:
               memory: "256Mi"
@@ -64,6 +68,9 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
+      volumes:
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

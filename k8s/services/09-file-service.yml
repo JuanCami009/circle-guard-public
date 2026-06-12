@@ -21,6 +21,7 @@ spec:
             - containerPort: 8085
           securityContext:
             runAsNonRoot: true
+            readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
               drop:
@@ -58,6 +59,8 @@ spec:
           volumeMounts:
             - name: uploads
               mountPath: /app/uploads
+            - name: tmp
+              mountPath: /tmp
           resources:
             requests:
               memory: "256Mi"
@@ -67,6 +70,8 @@ spec:
               cpu: "500m"
       volumes:
         - name: uploads
+          emptyDir: {}
+        - name: tmp
           emptyDir: {}
 ---
 apiVersion: v1

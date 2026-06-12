@@ -484,7 +484,7 @@ pipeline {
                         --format table \
                         /src/k8s/services || IAC_FAIL=1
 
-                    echo "Escaneando terraform/ con Trivy config..."
+                    echo "Escaneando terraform/modules/aws-s3-uploads con Trivy config..."
                     docker run --rm \
                         -v trivy-iac-src:/src:ro \
                         -v trivy-db-cache:/root/.cache/trivy \
@@ -492,7 +492,16 @@ pipeline {
                         --severity HIGH,CRITICAL \
                         --exit-code ${TRIVY_EXIT_CODE} \
                         --format table \
-                        /src/terraform/modules/aws-s3-uploads \
+                        /src/terraform/modules/aws-s3-uploads || IAC_FAIL=1
+
+                    echo "Escaneando terraform/modules/k8s-microservice con Trivy config..."
+                    docker run --rm \
+                        -v trivy-iac-src:/src:ro \
+                        -v trivy-db-cache:/root/.cache/trivy \
+                        aquasec/trivy:latest config \
+                        --severity HIGH,CRITICAL \
+                        --exit-code ${TRIVY_EXIT_CODE} \
+                        --format table \
                         /src/terraform/modules/k8s-microservice || IAC_FAIL=1
 
                     if [ "${TRIVY_EXIT_CODE}" = "1" ] && [ "${IAC_FAIL}" = "1" ]; then

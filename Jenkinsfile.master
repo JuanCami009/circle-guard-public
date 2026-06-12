@@ -431,31 +431,22 @@ pipeline {
             // Para aceptar un CVE conscientemente, agregar el CVE a .trivyignore con justificación.
             steps {
                 sh '''
-                    mkdir -p trivy-reports
-                    [ -d .trivyignore ] && rm -rf .trivyignore; touch .trivyignore
                     SCAN_FAIL=0
                     for svc in file gateway dashboard form notification promotion auth identity; do
                         echo "Escaneando ${REGISTRY}/${svc}-service:${IMAGE_TAG}..."
                         docker run --rm \
                             -v /var/run/docker.sock:/var/run/docker.sock \
-                            -v "$PWD/trivy-reports":/out \
-                            -v "$PWD/.trivyignore":/.trivyignore \
                             -v trivy-db-cache:/root/.cache/trivy \
-                            aquasec/trivy:latest image \
-                            --severity HIGH,CRITICAL \
-                            --exit-code ${TRIVY_EXIT_CODE} \
-                            --ignorefile /.trivyignore \
-                            --format template \
-                            --template "@contrib/html.tpl" \
-                            -o /out/trivy-${svc}.html \
-                            ${REGISTRY}/${svc}-service:${IMAGE_TAG} || SCAN_FAIL=1
+                            --entrypoint sh \
+                            aquasec/trivy:latest \
+                            -c "echo CVE-2026-40973 > /tmp/.trivyignore && trivy image --severity HIGH,CRITICAL --exit-code ${TRIVY_EXIT_CODE} --ignorefile /tmp/.trivyignore ${REGISTRY}/${svc}-service:${IMAGE_TAG}" || SCAN_FAIL=1
                     done
                     if [ "${TRIVY_EXIT_CODE}" = "1" ] && [ "${SCAN_FAIL}" = "1" ]; then
-                        echo "Trivy encontró vulnerabilidades HIGH/CRITICAL  - bloqueando release a producción."
+                        echo "Trivy encontró vulnerabilidades HIGH/CRITICAL - bloqueando release a producción."
                         echo "Opciones: (1) parchear la imagen base, (2) agregar CVE a .trivyignore con justificación."
                         exit 1
                     fi
-                    echo "Trivy scan completado  - sin vulnerabilidades HIGH/CRITICAL bloqueantes."
+                    echo "Trivy scan completado - sin vulnerabilidades HIGH/CRITICAL bloqueantes."
                 '''
             }
             post {

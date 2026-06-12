@@ -6,12 +6,14 @@ Este documento describe todas las pruebas implementadas en el proyecto. Se defin
 
 | Tipo | Cantidad | Servicios cubiertos | Herramienta principal |
 |---|---|---|---|
-| Unitarias (backend) | 14 | promotion, auth, notification, dashboard, file | JUnit 5 + Mockito |
-| Integración (backend) | 10 | promotion, notification, gateway, form, identity, dashboard, file | JUnit 5 + Testcontainers / @SpringBootTest |
+| Unitarias (backend) | 39 tests en 20 clases | promotion, auth, notification, gateway, form, identity, dashboard, file | JUnit 5 + Mockito |
+| Integración (backend) | 10 tests en 7 clases | promotion, notification, gateway, form, identity, dashboard, file | JUnit 5 + @SpringBootTest / H2 / Testcontainers |
 | Unitarias (mobile) | 4 archivos | React Native / Expo | Jest + Testing Library |
-| E2E | 4 features (journeys cross-service) | Los 8 servicios del entorno desplegado | Karate DSL (JUnit 5) |
-| Rendimiento | 6 escenarios | promotion, form, gateway, dashboard, auth, identity | Locust |
-| Seguridad | 8 servicios | Todos los microservicios | OWASP ZAP Baseline |
+| E2E | 7 flujos cross-service | Los 8 servicios del entorno desplegado | Bash + curl (`e2e/run_e2e.sh`) |
+| Rendimiento | 4 clases de usuario, ~1600 req en 60 s | promotion, form, gateway, dashboard | Locust (headless, Docker) |
+| Seguridad (dinámica) | 8 servicios | Todos los microservicios | OWASP ZAP Baseline |
+| Seguridad (estática / imágenes) | 8 imágenes Docker + IaC | Todos los microservicios + k8s + terraform | Trivy |
+| Cobertura | Reporte por servicio | 8 servicios backend | JaCoCo + SonarQube |
 
 ### Localización de todos los archivos de prueba
 
@@ -1214,4 +1216,137 @@ locust -f locust/locustfile.py \
 # 6. OWASP ZAP (requiere servicios accesibles en NodePorts 300XX)
 bash zap/run_zap.sh
 # → zap/reports/zap-<servicio>.html por cada servicio
+
+# 7. Trivy - escaneo de imágenes locales (requiere imágenes construidas)
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+  aquasec/trivy:latest image --severity HIGH,CRITICAL circleguard/auth-service:latest
+# → reporte por consola; el pipeline genera HTML via --format template
+
+# 8. Trivy - escaneo IaC (manifests y Terraform)
+docker run --rm -v "$PWD":/src aquasec/trivy:latest config \
+  --severity HIGH,CRITICAL /src/k8s /src/terraform
 ```
+
+---
+
+## 10. Cobertura de Código con JaCoCo y SonarQube
+
+### 10.1 Integración JaCoCo → SonarQube
+
+La cobertura de código se genera con JaCoCo y se publica en SonarQube en cada ejecución de los pipelines. La configuración en `build.gradle.kts` aplica JaCoCo a todos los subproyectos:
+
+```kotlin
+subprojects {
+    apply(plugin = "jacoco")
+
+    tasks.withType<Test> {
+        finalizedBy("jacocoTestReport")  // JaCoCo corre automáticamente después de cada test task
+    }
+
+    tasks.withType<org.gradle.testing.jacoco.tasks.JacocoReport> {
+        reports {
+            xml.required.set(true)   // SonarQube lee el XML
+            html.required.set(true)  // Jenkins Coverage Plugin y revisión manual
+        }
+    }
+}
+```
+
+SonarQube lee el reporte XML de cada subproyecto desde:
+```
+services/<servicio>/build/reports/jacoco/test/jacocoTestReport.xml
+```
+
+### 10.2 Quality Gate "Sonar Way"
+
+El proyecto usa la Quality Gate por defecto de SonarQube (**"Sonar Way"**) sin personalización adicional. Sus umbrales aplican sobre **código nuevo** (diferencial desde el último análisis):
+
+| Condición | Umbral |
+|---|---|
+| Cobertura de código nuevo | >= 80% |
+| Líneas duplicadas en código nuevo | <= 3% |
+| Maintainability Rating (código nuevo) | A |
+| Reliability Rating (código nuevo) | A |
+| Security Rating (código nuevo) | A |
+
+### 10.3 Comportamiento del Quality Gate por entorno
+
+| Entorno | `abortPipeline` | Resultado si Quality Gate falla |
+|---|---|---|
+| dev | `false` | Pipeline continúa, build marcado `Unstable`, notificación email `[INESTABLE]` |
+| stage | `false` | Pipeline continúa, build marcado `Unstable`, notificación email `[INESTABLE]` |
+| master | **`true`** | Pipeline se aborta antes de Docker Build y deploy |
+
+El gate asimétrico permite iteraciones frecuentes en dev/stage sin bloqueos por deuda técnica menor, mientras garantiza que ningún código con Quality Gate fallido llega a producción.
+
+### 10.4 Reporte de cobertura HTML en Jenkins
+
+Además de SonarQube, el pipeline genera reportes HTML de JaCoCo archivados como artefactos del build:
+
+```groovy
+stage('Coverage Reports') {
+    steps {
+        sh './gradlew jacocoTestReport --no-daemon || true'
+    }
+    post {
+        always {
+            recordCoverage(
+                tools: [[parser: 'JACOCO',
+                         pattern: 'services/*/build/reports/jacoco/test/jacocoTestReport.xml']],
+                sourceCodeRetention: 'EVERY_BUILD'
+            )
+            archiveArtifacts artifacts: 'services/*/build/reports/jacoco/**/*.html',
+                             allowEmptyArchive: true
+        }
+    }
+}
+```
+
+Los reportes son accesibles en:
+```
+http://localhost:8080/job/circleguard-master-pipeline/job/master/<N>/artifact/services/<svc>/build/reports/jacoco/test/html/
+```
+
+### 10.5 Ver cobertura localmente
+
+```bash
+# Generar reportes JaCoCo HTML para todos los servicios
+./gradlew jacocoTestReport --no-daemon
+
+# Abrir el reporte de un servicio específico
+open services/circleguard-auth-service/build/reports/jacoco/test/html/index.html
+```
+
+---
+
+## 11. Trivy: Escaneo de Vulnerabilidades (Seguridad Estática)
+
+### 11.1 Qué analiza Trivy
+
+Trivy complementa OWASP ZAP con dos tipos de análisis:
+
+| Modo | Comando | Qué detecta |
+|---|---|---|
+| `image` | `trivy image <imagen>` | CVEs en librerías JAR del classpath y en la imagen base (JDK 21 Temurin) |
+| `config` | `trivy config <directorio>` | Misconfiguraciones en manifests Kubernetes y módulos Terraform |
+
+Trivy **no detecta** vulnerabilidades en la lógica de negocio del código fuente. Para eso se complementa con OWASP ZAP (análisis dinámico) y SonarQube (análisis estático de código).
+
+### 11.2 Gestión del `.trivyignore`
+
+El archivo `.trivyignore` en la raíz del repositorio lista CVEs aceptados conscientemente con justificación documentada. Política: ninguna entrada puede estar sin comentario explicativo.
+
+```
+# .trivyignore
+# CVE-YYYY-XXXXX  # JDK 21 Temurin base image - sin fix disponible; mitigado por network policy en K8s
+```
+
+### 11.3 Gate por entorno
+
+| Entorno | `TRIVY_EXIT_CODE` | Efecto |
+|---|---|---|
+| dev | `0` | Genera reportes HTML sin bloquear |
+| stage | `0` | Genera reportes HTML sin bloquear |
+| prod (master) | `1` | Bloquea pipeline si detecta HIGH o CRITICAL |
+
+El pipeline `Jenkinsfile.security` ejecuta ambos tipos de scan (image + config) cada noche de forma independiente del pipeline de entrega, asegurando detección continua incluso días sin nuevos builds.

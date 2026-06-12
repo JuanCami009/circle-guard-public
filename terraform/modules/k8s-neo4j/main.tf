@@ -1,5 +1,5 @@
 resource "kubernetes_deployment_v1" "neo4j" {
-  wait_for_rollout = false
+  wait_for_rollout = true
   metadata {
     name      = "neo4j"
     namespace = var.namespace

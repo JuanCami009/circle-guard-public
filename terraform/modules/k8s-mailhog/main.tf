@@ -5,7 +5,7 @@
 # ---------------------------------------------------------------------------
 
 resource "kubernetes_deployment_v1" "mailhog" {
-  wait_for_rollout = false
+  wait_for_rollout = true
   metadata {
     name      = "mailhog"
     namespace = var.namespace

@@ -77,7 +77,7 @@ resource "helm_release" "kafka" {
 # --- ZooKeeper ---
 
 resource "kubernetes_deployment_v1" "zookeeper" {
-  wait_for_rollout = false
+  wait_for_rollout = true
   count = var.use_helm ? 0 : 1
 
   metadata {
@@ -171,7 +171,7 @@ resource "kubernetes_service_v1" "zookeeper_svc" {
 # --- Kafka broker ---
 
 resource "kubernetes_deployment_v1" "kafka" {
-  wait_for_rollout = false
+  wait_for_rollout = true
   count = var.use_helm ? 0 : 1
 
   metadata {

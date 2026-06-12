@@ -56,7 +56,7 @@ resource "kubernetes_deployment_v1" "redis" {
     }
   }
 
-  wait_for_rollout = false
+  wait_for_rollout = true
 }
 
 resource "kubernetes_service_v1" "redis_svc" {

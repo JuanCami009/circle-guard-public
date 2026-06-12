@@ -561,14 +561,14 @@ pipeline {
             steps {
                 sh '''
                     echo "Esperando que los pods del entorno master esten listos..."
-                    kubectl rollout status deployment/file-service         -n circleguard --timeout=120s
-                    kubectl rollout status deployment/gateway-service      -n circleguard --timeout=120s
-                    kubectl rollout status deployment/dashboard-service    -n circleguard --timeout=120s
-                    kubectl rollout status deployment/form-service         -n circleguard --timeout=120s
-                    kubectl rollout status deployment/notification-service -n circleguard --timeout=120s
-                    kubectl rollout status deployment/promotion-service    -n circleguard --timeout=180s
-                    kubectl rollout status deployment/auth-service         -n circleguard --timeout=180s
-                    kubectl rollout status deployment/identity-service     -n circleguard --timeout=120s
+                    kubectl rollout status deployment/file-service         -n circleguard --timeout=300s
+                    kubectl rollout status deployment/gateway-service      -n circleguard --timeout=300s
+                    kubectl rollout status deployment/dashboard-service    -n circleguard --timeout=300s
+                    kubectl rollout status deployment/form-service         -n circleguard --timeout=300s
+                    kubectl rollout status deployment/notification-service -n circleguard --timeout=300s
+                    kubectl rollout status deployment/promotion-service    -n circleguard --timeout=360s
+                    kubectl rollout status deployment/auth-service         -n circleguard --timeout=360s
+                    kubectl rollout status deployment/identity-service     -n circleguard --timeout=300s
 
                     echo "Ejecutando smoke tests HTTP via NodePorts..."
                     # HTTP 200, 404 o 401 indican que Spring Boot inicio correctamente.

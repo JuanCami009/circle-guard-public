@@ -432,16 +432,19 @@ pipeline {
             steps {
                 sh '''
                     mkdir -p trivy-reports
+                    [ -d .trivyignore ] && rm -rf .trivyignore; touch .trivyignore
                     SCAN_FAIL=0
                     for svc in file gateway dashboard form notification promotion auth identity; do
                         echo "Escaneando ${REGISTRY}/${svc}-service:${IMAGE_TAG}..."
                         docker run --rm \
                             -v /var/run/docker.sock:/var/run/docker.sock \
                             -v "$PWD/trivy-reports":/out \
+                            -v "$PWD/.trivyignore":/.trivyignore \
                             -v trivy-db-cache:/root/.cache/trivy \
                             aquasec/trivy:latest image \
                             --severity HIGH,CRITICAL \
                             --exit-code ${TRIVY_EXIT_CODE} \
+                            --ignorefile /.trivyignore \
                             --format template \
                             --template "@contrib/html.tpl" \
                             -o /out/trivy-${svc}.html \

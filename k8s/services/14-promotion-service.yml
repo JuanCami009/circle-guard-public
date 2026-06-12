@@ -13,6 +13,8 @@ spec:
       labels:
         app: promotion-service
     spec:
+      securityContext:
+        runAsNonRoot: true
       # Espera a Neo4j y Kafka antes de arrancar.
       # Neo4jSchemaConfig tiene @PostConstruct que conecta a bolt en startup.
       # SurveyListener tiene @KafkaListener que falla sin broker disponible.

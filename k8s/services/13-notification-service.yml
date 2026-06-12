@@ -13,6 +13,8 @@ spec:
       labels:
         app: notification-service
     spec:
+      securityContext:
+        runAsNonRoot: true
       # Espera a que Kafka esté disponible antes de arrancar
       # (notification-service tiene @KafkaListener activos que fallan si Kafka no está listo)
       initContainers:

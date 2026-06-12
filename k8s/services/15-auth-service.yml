@@ -13,6 +13,8 @@ spec:
       labels:
         app: auth-service
     spec:
+      securityContext:
+        runAsNonRoot: true
       # ── Seguridad (Punto 8): SA dedicada, token no automontado ───────────
       serviceAccountName: auth-service-sa
       automountServiceAccountToken: false

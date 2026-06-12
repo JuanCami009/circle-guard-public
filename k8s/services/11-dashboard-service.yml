@@ -13,6 +13,8 @@ spec:
       labels:
         app: dashboard-service
     spec:
+      securityContext:
+        runAsNonRoot: true
       containers:
         - name: dashboard-service
           image: circleguard/dashboard-service:latest

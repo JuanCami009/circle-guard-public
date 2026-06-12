@@ -29,14 +29,10 @@ subprojects {
         }
     }
 
-    // Force Tomcat 10.1.55 to resolve CVEs discovered after Spring Boot 3.4.5 release
-    configurations.all {
-        resolutionStrategy {
-            force("org.apache.tomcat.embed:tomcat-embed-core:10.1.55")
-            force("org.apache.tomcat.embed:tomcat-embed-websocket:10.1.55")
-            force("org.apache.tomcat.embed:tomcat-embed-el:10.1.55")
-        }
-    }
+    // Override Tomcat and Spring Framework via Spring Boot property names
+    // (used by io.spring.dependency-management plugin when processing the BOM)
+    extra["tomcat.version"] = "10.1.55"
+    extra["spring-framework.version"] = "6.2.11"
 
     dependencies {
         "implementation"(platform("org.springframework.boot:spring-boot-dependencies:3.4.5"))

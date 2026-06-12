@@ -560,6 +560,13 @@ pipeline {
         stage('Smoke Tests') {
             steps {
                 sh '''
+                    echo "=== Estado inicial de pods ==="
+                    kubectl get pods -n circleguard -o wide || true
+                    echo "=== Describe file-service ==="
+                    kubectl describe pod -l app=file-service -n circleguard || true
+                    echo "=== Logs file-service (si existe) ==="
+                    kubectl logs -l app=file-service -n circleguard --tail=50 2>/dev/null || true
+
                     echo "Esperando que los pods del entorno master esten listos..."
                     kubectl rollout status deployment/file-service         -n circleguard --timeout=300s
                     kubectl rollout status deployment/gateway-service      -n circleguard --timeout=300s

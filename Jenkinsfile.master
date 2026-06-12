@@ -482,10 +482,7 @@ pipeline {
                         --severity HIGH,CRITICAL \
                         --exit-code ${TRIVY_EXIT_CODE} \
                         --format table \
-                        /src/k8s/services > trivy-reports/trivy-iac-k8s.txt 2>&1
-                    K8S_EC=$?
-                    cat trivy-reports/trivy-iac-k8s.txt
-                    [ $K8S_EC -ne 0 ] && IAC_FAIL=1
+                        /src/k8s/services || IAC_FAIL=1
 
                     echo "Escaneando terraform/ con Trivy config..."
                     docker run --rm \
@@ -496,10 +493,7 @@ pipeline {
                         --exit-code ${TRIVY_EXIT_CODE} \
                         --format table \
                         /src/terraform/modules/aws-s3-uploads \
-                        /src/terraform/modules/k8s-microservice > trivy-reports/trivy-iac-terraform.txt 2>&1
-                    TF_EC=$?
-                    cat trivy-reports/trivy-iac-terraform.txt
-                    [ $TF_EC -ne 0 ] && IAC_FAIL=1
+                        /src/terraform/modules/k8s-microservice || IAC_FAIL=1
 
                     if [ "${TRIVY_EXIT_CODE}" = "1" ] && [ "${IAC_FAIL}" = "1" ]; then
                         echo "Trivy IaC encontró misconfiguraciones HIGH/CRITICAL - bloqueando release a producción."
@@ -510,7 +504,7 @@ pipeline {
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'trivy-reports/trivy-iac-*.txt', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'trivy-reports/trivy-iac-*.txt,trivy-reports/trivy-iac-*.html', allowEmptyArchive: true
                 }
             }
         }

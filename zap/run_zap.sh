@@ -93,6 +93,7 @@ for svc in "${!SERVICES[@]}"; do
     vol_name="zap-wrk-${svc}-$$"
     docker volume rm "$vol_name" 2>/dev/null || true
     docker volume create "$vol_name" >/dev/null
+    docker run --rm -v "${vol_name}:/zap/wrk" alpine chmod 777 /zap/wrk
 
     if [ -f "$RULES_FILE" ]; then
         docker run --rm -i -v "${vol_name}:/zap/wrk" alpine sh -c 'cat > /zap/wrk/rules.tsv' < "$RULES_FILE"

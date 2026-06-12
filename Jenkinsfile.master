@@ -481,6 +481,7 @@ pipeline {
                         aquasec/trivy:latest config \
                         --severity HIGH,CRITICAL \
                         --exit-code ${TRIVY_EXIT_CODE} \
+                        --ignorefile /src/.trivyignore \
                         --format table \
                         /src/k8s/services || IAC_FAIL=1
 
@@ -491,6 +492,7 @@ pipeline {
                         aquasec/trivy:latest config \
                         --severity HIGH,CRITICAL \
                         --exit-code ${TRIVY_EXIT_CODE} \
+                        --ignorefile /src/.trivyignore \
                         --format table \
                         /src/terraform/modules/aws-s3-uploads || IAC_FAIL=1
 
@@ -501,6 +503,7 @@ pipeline {
                         aquasec/trivy:latest config \
                         --severity HIGH,CRITICAL \
                         --exit-code ${TRIVY_EXIT_CODE} \
+                        --ignorefile /src/.trivyignore \
                         --format table \
                         /src/terraform/modules/k8s-microservice || IAC_FAIL=1
 

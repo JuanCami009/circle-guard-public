@@ -229,6 +229,7 @@ locals {
         SPRING_LDAP_BASE      = "dc=circleguard,dc=edu"
         SPRING_LDAP_USERNAME  = "cn=admin,dc=circleguard,dc=edu"
         # SPRING_LDAP_PASSWORD eliminado (Punto 8): se inyecta desde circleguard-secrets via envFrom
+        IDENTITY_SERVICE_URL  = "http://identity-service-svc:8083"
       }
       resources = {
         requests = { memory = "256Mi", cpu = "100m" }

@@ -29,10 +29,22 @@ subprojects {
         }
     }
 
-    // Override Tomcat and Spring Framework via Spring Boot property names
-    // (used by io.spring.dependency-management plugin when processing the BOM)
+    // Override versions via Spring Boot BOM property names
+    // (read by io.spring.dependency-management before applying the BOM — only ext[] works, not resolutionStrategy)
     extra["tomcat.version"] = "10.1.55"
     extra["spring-framework.version"] = "6.2.11"
+    extra["netty.version"] = "4.1.135.Final"
+    extra["postgresql.version"] = "42.7.11"
+    extra["spring-security.version"] = "6.5.9"
+    extra["kafka.version"] = "3.9.2"
+
+    // Force transitive deps NOT managed by Spring Boot BOM (dep-management plugin won't interfere)
+    configurations.all {
+        resolutionStrategy {
+            force("org.lz4:lz4-java:1.8.1")
+            force("commons-io:commons-io:2.16.1")
+        }
+    }
 
     dependencies {
         "implementation"(platform("org.springframework.boot:spring-boot-dependencies:3.4.5"))

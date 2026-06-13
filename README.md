@@ -41,18 +41,6 @@ Plataforma de microservicios para gestión de alertas de salud pública, constru
 
 ## Desarrollo local
 
-Levantar infraestructura:
-
-```bash
-docker compose up -d
-```
-
-Correr un servicio:
-
-```bash
-./gradlew :services:circleguard-auth-service:bootRun
-```
-
 Servicios de infraestructura disponibles tras `docker compose up`:
 
 | Servicio | URL |

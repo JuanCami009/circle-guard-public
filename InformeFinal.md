@@ -300,6 +300,10 @@ k8s/
     └── 16-identity-service.yml
 ```
 
+**Diagrama de despliegue:**
+
+![Deployment CircleGuard](Deployment%20CircleGuard.jpg)
+
 ---
 
 # 3. Patrones de Diseño

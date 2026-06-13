@@ -163,6 +163,12 @@ Los 8 microservicios del proyecto son:
 
 Jenkins se ejecuta como contenedor Docker usando una imagen personalizada (`jenkins/Dockerfile`) que instala `docker` y `kubectl` sobre `jenkins/jenkins:lts`.
 
+**Construir la imagen personalizada** (desde la raíz del repositorio):
+
+```bash
+docker build -t circleguard/jenkins:latest jenkins/
+```
+
 **Comando de arranque:**
 
 ```bash
@@ -187,9 +193,35 @@ docker run -d \
 | `--add-host=kubernetes.docker.internal:host-gateway` | Resuelve el API server Kubernetes desde el contenedor |
 | `~/.gradle` | Cache de Gradle del host; evita descargar el wrapper en cada build |
 
-**Kubeconfig parcheado**: el kubeconfig montado apunta a `127.0.0.1:6443`. Se crea una copia parcheada con `host.docker.internal:6443` persistida en `jenkins_home` y referenciada por `KUBECONFIG=/var/jenkins_home/kube-jenkins.conf` en todos los pipelines.
+**Configuración inicial de Jenkins:**
 
-**Plugins adicionales requeridos**: Docker Pipeline, Kubernetes CLI, SonarQube Scanner, Email Extension, Coverage Plugin.
+1. Abrir `http://localhost:8080`.
+2. Obtener la contraseña inicial: `docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword`
+3. Seleccionar **Install suggested plugins**.
+4. Crear el usuario administrador y confirmar la URL.
+
+Luego ir a **Manage Jenkins → Plugins → Available plugins** e instalar:
+
+| Plugin | Función |
+|---|---|
+| `Docker Pipeline` | Construir y publicar imágenes Docker desde Jenkinsfile |
+| `Kubernetes CLI` | Acceso a `kubectl` en los pipelines |
+| `SonarQube Scanner` | Análisis estático + Quality Gate |
+| `Email Extension` | Notificaciones de fallo vía SMTP |
+| `Coverage Plugin` | Publicar reportes JaCoCo en la UI de Jenkins |
+
+**Kubeconfig parcheado**: el kubeconfig montado apunta a `127.0.0.1:6443`. Se crea una copia parcheada con `host.docker.internal:6443` persistida en `jenkins_home` y referenciada por `KUBECONFIG=/var/jenkins_home/kube-jenkins.conf` en todos los pipelines:
+
+```bash
+docker exec jenkins cp /var/jenkins_home/.kube/config /var/jenkins_home/kube-jenkins.conf
+CONTEXT=$(docker exec jenkins kubectl --kubeconfig=/var/jenkins_home/kube-jenkins.conf config current-context)
+docker exec jenkins kubectl --kubeconfig=/var/jenkins_home/kube-jenkins.conf \
+    config set-cluster "$CONTEXT" \
+    --server=https://host.docker.internal:6443 \
+    --insecure-skip-tls-verify=true
+```
+
+El kubeconfig original del host **no se modifica**. Este archivo parcheado persiste en el volumen `jenkins_home` y sobrevive reinicios del contenedor.
 
 ## 2.3 Dockerfiles — Estrategia Multi-Stage
 
@@ -201,7 +233,36 @@ Cada microservicio tiene su `Dockerfile` en `services/<nombre>/Dockerfile`. Todo
 
 El **contexto de build siempre es la raíz del repositorio** porque `settings.gradle.kts` y `build.gradle.kts` residen ahí y Gradle debe ver todos los módulos del monorepo.
 
+**Construir las imágenes manualmente** (desde la raíz del repositorio):
+
+```bash
+docker build -t circleguard/file-service:latest        -f services/circleguard-file-service/Dockerfile .
+docker build -t circleguard/gateway-service:latest     -f services/circleguard-gateway-service/Dockerfile .
+docker build -t circleguard/dashboard-service:latest   -f services/circleguard-dashboard-service/Dockerfile .
+docker build -t circleguard/form-service:latest        -f services/circleguard-form-service/Dockerfile .
+docker build -t circleguard/notification-service:latest -f services/circleguard-notification-service/Dockerfile .
+docker build -t circleguard/promotion-service:latest   -f services/circleguard-promotion-service/Dockerfile .
+docker build -t circleguard/auth-service:latest        -f services/circleguard-auth-service/Dockerfile .
+docker build -t circleguard/identity-service:latest    -f services/circleguard-identity-service/Dockerfile .
+```
+
+Los pipelines CI/CD construyen las imágenes con el JAR pre-compilado en la etapa `Build JARs`. El `Dockerfile` de runtime copia el JAR desde `services/*/build/libs/*.jar` sin re-invocar Gradle, reduciendo el tiempo de esta etapa de ~5 minutos a ~10 segundos por servicio.
+
 ## 2.4 Kubernetes — Estructura de Manifests
+
+**Secuencia de despliegue manual:**
+
+```bash
+kubectl config use-context docker-desktop
+kubectl apply -f k8s/00-namespace.yml
+kubectl apply -f k8s/infra/
+
+# Esperar infraestructura crítica antes de los servicios
+kubectl wait --for=condition=ready pod -l app=postgres -n circleguard --timeout=120s
+kubectl wait --for=condition=ready pod -l app=neo4j    -n circleguard --timeout=120s
+
+kubectl apply -f k8s/services/
+```
 
 Los manifests están organizados en `k8s/`:
 
@@ -336,7 +397,22 @@ Cada scan de QR ejecuta (1) verificación HMAC del JWT y (2) consulta a Redis. C
 
 # 4. Pipeline de Desarrollo (Dev)
 
-## 4.1 Resumen
+## 4.1 Configurar el Multibranch Pipeline en Jenkins
+
+1. Abrir Jenkins en `http://localhost:8080` → **New Item**.
+2. Ingresar el nombre `circleguard-dev-pipeline`.
+3. Seleccionar **Multibranch Pipeline** → **OK**.
+4. En **Branch Sources**: Add source → Git → URL del repositorio. Discover branches: All branches.
+5. En **Build Configuration**:
+
+| Campo | Valor |
+|---|---|
+| Mode | by Jenkinsfile |
+| Script Path | `Jenkinsfile.dev` |
+
+6. **Save** → Jenkins ejecuta Branch Indexing automáticamente y crea un sub-pipeline por cada branch que contenga `Jenkinsfile.dev`.
+
+## 4.2 Resumen
 
 El pipeline (`Jenkinsfile.dev`) opera como un **Multibranch Pipeline** en Jenkins, con cada branch teniendo su pipeline aislado. Despliega en el namespace `circleguard-dev`.
 
@@ -356,7 +432,7 @@ El pipeline (`Jenkinsfile.dev`) opera como un **Multibranch Pipeline** en Jenkin
 | 12 | Performance Tests | Secuencial | Locust 50 usuarios / 60 s contra NodePorts 310XX |
 | 13 | Coverage Reports | Secuencial | JaCoCo XML archivado + publicado en Jenkins Coverage Plugin |
 
-## 4.2 Separación de entornos
+## 4.3 Separación de entornos
 
 | Atributo | Producción | Desarrollo |
 |---|---|---|
@@ -367,11 +443,42 @@ El pipeline (`Jenkinsfile.dev`) opera como un **Multibranch Pipeline** en Jenkin
 
 Los manifests de producción se transforman con `sed` al aplicarlos en dev: namespace, tag de imagen y NodePorts se sustituyen explícitamente (sin backreferences, por compatibilidad con BusyBox sed en Alpine Linux).
 
-## 4.3 Etapa Prepare y race condition en Gradle
+## 4.4 Descripción de etapas clave
+
+**Checkout**: `checkout scm` + `chmod +x gradlew`. El `chmod` es necesario porque Jenkins clona sin preservar permisos del Gradle wrapper.
+
+**Build JARs (paralelo)**: flags usados en cada servicio:
+
+| Flag | Razón |
+|---|---|
+| `:services:<name>:bootJar` | Compila solo el servicio específico |
+| `-x test` | Omite pruebas (etapa dedicada posterior) |
+| `--no-daemon` | Evita que el daemon Gradle quede en segundo plano en Jenkins |
+
+**Deploy Dev**: aplica transformaciones `sed` sobre los manifests de producción. Usa reemplazos explícitos (sin backreferences) por compatibilidad con BusyBox sed en Alpine Linux:
+
+```bash
+# Infra: namespace y NodePorts a ClusterIP
+sed -E -e 's/namespace: circleguard$/namespace: circleguard-dev/g' \
+       -e 's/type: NodePort/type: ClusterIP/g' \
+       -e '/nodePort:/d' "$f" | kubectl apply -f -
+
+# Servicios: namespace, tag :latest→:dev y NodePorts 300XX→310XX
+sed -e 's/namespace: circleguard$/namespace: circleguard-dev/g' \
+    -e 's/:latest/:dev/g' \
+    -e 's/nodePort: 30082/nodePort: 31082/g' \
+    -e 's/nodePort: 30087/nodePort: 31087/g' \
+    # ... resto de puertos explícitos
+    "$f" | kubectl apply -f -
+```
+
+**Smoke Tests**: `curl` vía `host.docker.internal` (los NodePorts son puertos del nodo Kubernetes = host, no del contenedor Jenkins donde corre el pipeline). Códigos aceptables: `200`, `401`, `403`, `404`. Solo `000` (connection refused) es fallo real.
+
+## 4.5 Etapa Prepare y race condition en Gradle
 
 Sin la etapa `Prepare`, los 8 procesos Gradle compiten por el lock exclusivo del archivo `gradle-8.14-bin.zip` y hacen timeout a los 120 segundos. Al ejecutar `./gradlew --version --no-daemon` de forma secuencial primero, el wrapper queda cacheado en `jenkins_home/.gradle/wrapper/dists/` y los builds paralelos lo encuentran disponible inmediatamente.
 
-## 4.4 Variables de entorno del pipeline
+## 4.6 Variables de entorno del pipeline
 
 ```groovy
 environment {
@@ -545,7 +652,105 @@ Cuatro clases de usuario simulan comportamientos reales del sistema:
 
 **Sobre los fallos reportados por Locust**: Locust reporta ~518 "fallos" que en realidad son respuestas 401/403 (endpoints protegidos correctamente) y 404 (actuator de promotion-service sin configurar). No representan errores reales del servidor. El único endpoint con autenticación configurada en el escenario (`POST /api/v1/gate/validate`) tiene 0 fallos reales y p95 = 8 ms.
 
-## 5.7 Pruebas de Seguridad (OWASP ZAP)
+## 5.7 Árbol de archivos de prueba
+
+```
+services/
+  circleguard-promotion-service/src/test/java/com/circleguard/promotion/
+    task/GraphCleanupTaskTest.java                          # Unit
+    service/LocationResolutionServiceTest.java              # Unit
+    service/HealthStatusServiceTest.java                    # Unit
+    service/StatusLifecycleTest.java                        # Unit
+    service/FloorServiceTest.java                           # Unit
+    integration/SurveyListenerIntegrationTest.java          # Integración
+    service/AdministrativeCorrectionTest.java               # Integración (Testcontainers)
+    service/HealthStatusReevaluationTest.java               # Integración (Testcontainers)
+
+  circleguard-auth-service/src/test/java/com/circleguard/auth/
+    service/JwtTokenServiceTest.java                        # Unit
+    service/QrTokenServiceTest.java                         # Unit
+    controller/LoginControllerTest.java                     # Unit
+    controller/QrTokenControllerTest.java                   # Unit
+    controller/UserControllerTest.java                      # Unit
+    client/IdentityClientResilienceTest.java                # Unit
+    integration/AuthUserRepositoryIntegrationTest.java      # Integración
+
+  circleguard-notification-service/src/test/java/com/circleguard/notification/
+    service/AuditLogServiceTest.java                        # Unit
+    service/NotificationDispatcherTest.java                 # Unit
+    service/PushServiceToggleTest.java                      # Unit
+    service/TemplateServiceTest.java                        # Unit
+    integration/ExposureNotificationIntegrationTest.java    # Integración
+
+  circleguard-gateway-service/src/test/java/com/circleguard/gateway/
+    service/QrValidationServiceTest.java                    # Unit
+    service/QrValidationCacheTest.java                      # Unit
+    controller/GateControllerTest.java                      # Unit
+    integration/GatewayValidationIntegrationTest.java       # Integración
+
+  circleguard-form-service/src/test/java/com/circleguard/form/
+    controller/HealthSurveyControllerTest.java              # Unit
+    controller/QuestionnaireControllerTest.java             # Unit
+    integration/QuestionnaireJpaIntegrationTest.java        # Integración
+
+  circleguard-identity-service/src/test/java/com/circleguard/identity/
+    controller/IdentityVaultControllerTest.java             # Unit
+    util/IdentityEncryptionConverterTest.java               # Unit
+    integration/IdentityVaultServiceIntegrationTest.java    # Integración
+
+  circleguard-dashboard-service/src/test/java/com/circleguard/dashboard/
+    service/KAnonymityFilterTest.java                       # Unit
+    service/AnalyticsServiceTest.java                       # Unit
+    integration/AnalyticsControllerIntegrationTest.java     # Integración
+
+  circleguard-file-service/src/test/java/com/circleguard/file/
+    controller/FileUploadControllerTest.java                # Unit
+    service/FileStorageServiceTest.java                     # Unit
+    integration/FileUploadIntegrationTest.java              # Integración
+
+mobile/
+  hooks/useQrToken.test.ts                                  # Unit (mobile)
+  components/__tests__/DynamicForm.test.tsx                 # Unit (mobile)
+  context/__tests__/AuthContext.test.tsx                    # Unit (mobile)
+  utils/__tests__/storage.test.ts                           # Unit (mobile)
+
+locust/
+  locustfile.py                                             # Rendimiento
+  locust.conf                                               # Configuración headless
+  Dockerfile                                                # Imagen efímera sin volúmenes
+
+zap/
+  run_zap.sh                                                # Script de escaneo ZAP
+  rules.tsv                                                 # Reglas de supresión
+```
+
+## 5.8 Actualización del pipeline para integrar los nuevos tests
+
+### Sub-etapas de integración (antes vs. después)
+
+Antes de esta entrega, varias sub-etapas de la etapa `Integration Tests` imprimían `echo 'omitida'`. Se habilitaron todas las que no requieren Testcontainers Neo4j (limitación de macOS CI):
+
+| Sub-etapa | Antes | Después |
+|---|---|---|
+| `integration:file-service` | `echo 'omitida'` | `gradle test --tests "*.file.integration.*"` |
+| `integration:gateway-service` | `echo 'omitida'` | `gradle test --tests "*.gateway.integration.*"` |
+| `integration:dashboard-service` | `echo 'omitida'` | `gradle test --tests "*.dashboard.integration.*"` |
+| `integration:form-service` | `echo 'omitida'` | `gradle test --tests "*.form.integration.*"` |
+| `integration:notification-service` | `echo 'omitida'` | `gradle test --tests "*.notification.integration.*"` |
+| `integration:identity-service` | *(no existía)* | `gradle test --tests "*.identity.integration.*"` |
+| `integration:promotion-service` | `echo 'omitida'` | `echo 'omitida'` (Testcontainers Neo4j — macOS) |
+
+### Nuevos stages añadidos (todos los Jenkinsfiles)
+
+Se añadieron tres nuevos stages a los tres Jenkinsfiles (`dev`, `stage`, `master`):
+
+| Stage nuevo | Posición en el pipeline | Propósito |
+|---|---|---|
+| `Mobile Tests` | Después de `Integration Tests` | `npm run test:ci` con reporte JUnit XML |
+| `Coverage Reports` | Después de `Mobile Tests` | `./gradlew jacocoTestReport` + archiva HTML |
+| `Security Tests (OWASP ZAP)` | Solo `Jenkinsfile.master`, post-deploy | `zap/run_zap.sh` contra los 300XX |
+
+## 5.9 Pruebas de Seguridad (OWASP ZAP)
 
 El script `zap/run_zap.sh` ejecuta un escaneo pasivo (sin ataques activos) con OWASP ZAP Baseline contra los 8 microservicios en los NodePorts 300XX de producción. Integrado en el pipeline `Jenkinsfile.master` post-deploy.
 
@@ -554,10 +759,56 @@ El script `zap/run_zap.sh` ejecuta un escaneo pasivo (sin ataques activos) con O
 | Content Security Policy (10038) | No aplica a APIs REST sin frontend |
 | Cookie flags (10012, 10011, 10054) | La API usa JWT Bearer, no cookies de sesión |
 | CORS abierto (10098) | Intencional — app móvil Expo consume la API |
+| Swagger UI SubResource Integrity (90003) | Falso positivo estructural en APIs con Springdoc |
 
 Las reglas de inyección real (SQL, XSS, XSLT) están marcadas como `FAIL` — bloquean el pipeline si ZAP las detecta.
 
-## 5.8 Cobertura con JaCoCo y SonarQube
+## 5.10 Imagen Docker de Locust (sin volúmenes)
+
+Para ejecutar Locust en el pipeline Jenkins (Docker-in-Docker en macOS), no es posible montar volúmenes con paths del contenedor Jenkins porque Docker Desktop busca esos paths en el host macOS y no los encuentra. La solución es construir una imagen efímera que embebe los archivos:
+
+```dockerfile
+FROM locustio/locust
+USER root
+COPY . /mnt/locust/
+RUN chown -R locust:locust /mnt/locust
+USER locust
+WORKDIR /mnt/locust
+```
+
+`docker build` envía los archivos como un tar al daemon Docker (no como paths del host). El `chown` es necesario porque `COPY` crea los archivos con propietario `root` y Locust necesita escritura para generar los reportes HTML/CSV en ese directorio.
+
+## 5.11 Cómo ejecutar todas las pruebas localmente
+
+```bash
+# Backend (todas las pruebas unitarias e integración, excepto Testcontainers Neo4j)
+./gradlew test --no-daemon
+
+# Solo unitarias de un servicio
+./gradlew :services:circleguard-gateway-service:test --no-daemon
+
+# Solo integración
+./gradlew test --tests "*.integration.*" --no-daemon
+
+# Mobile
+cd mobile && npm run test:ci
+
+# E2E (requiere entorno dev corriendo en Kubernetes)
+E2E_HOST=localhost \
+TEST_JWT="<jwt>" \
+TEST_ANON_ID="<uuid>" \
+TEST_QR_TOKEN="<qr-token>" \
+  bash e2e/run_e2e.sh
+
+# Rendimiento (requiere pip install locust)
+locust -f locust/locustfile.py --config locust/locust.conf \
+  --host http://localhost:31087
+
+# Seguridad ZAP (requiere servicios en 300XX)
+bash zap/run_zap.sh
+```
+
+## 5.12 Cobertura con JaCoCo y SonarQube
 
 JaCoCo se configura en `build.gradle.kts` para todos los subproyectos. Genera reportes XML leídos por SonarQube y reportes HTML archivados en Jenkins.
 
@@ -608,7 +859,33 @@ readinessProbe:
 
 Se eligió `tcpSocket` en lugar de `httpGet` porque los endpoints HTTP requieren autenticación (retornan 401/403) y Kubernetes interpreta cualquier respuesta no-2xx como falla del probe.
 
-## 6.4 Rol del entorno stage como gate pre-producción
+## 6.4 Creación del job en Jenkins
+
+El pipeline stage no es detectado automáticamente por el Multibranch Pipeline (que apunta a `Jenkinsfile.dev`). Se crea como un job **Pipeline** independiente apuntando a `Jenkinsfile.stage`:
+
+1. **New Item** → nombre `circleguard-stage-pipeline` → tipo **Pipeline**
+2. En **Pipeline** → **Definition**: `Pipeline script from SCM`
+3. **SCM**: Git → URL del repositorio
+4. **Branch Specifier**: `*/master` (o la rama que corresponda al promote)
+5. **Script Path**: `Jenkinsfile.stage`
+6. **Save** → **Build Now** para verificar configuración
+
+## 6.5 Resultados de rendimiento por endpoint
+
+El run de referencia ejecutado contra el entorno stage (50 usuarios, 60 s):
+
+| Endpoint | Req. | RPS | Mediana | p95 | p99 | Fallos |
+|---|---|---|---|---|---|---|
+| `POST /api/v1/gate/validate` | ~720 | ~12 | 3 ms | 8 ms | 15 ms | 0 |
+| `GET /api/v1/health/status/{id}` | ~450 | ~7.5 | 4 ms | 10 ms | 20 ms | 0 |
+| `POST /api/v1/surveys` | ~180 | ~3 | 5 ms | 12 ms | 25 ms | 0 |
+| `GET /api/v1/questionnaires` | ~90 | ~1.5 | 3 ms | 7 ms | 14 ms | 0 |
+| `GET /api/v1/analytics/summary` | ~90 | ~1.5 | 5 ms | 13 ms | 28 ms | 0 |
+| **Total** | **~1600** | **~28** | **3 ms** | **8 ms** | **17 ms** | **0** |
+
+Los ~518 "fallos" que reporta Locust son respuestas 401/403 de endpoints protegidos correctamente. No representan errores reales del servidor.
+
+## 6.6 Rol del entorno stage como gate pre-producción
 
 | Dimensión | Dev | Stage |
 |---|---|---|
@@ -664,6 +941,12 @@ RANGE="${PREV_TAG:-HEAD~10}..HEAD"
 | `feat:` | **MINOR** | `feat(gateway): validación QR multifactor` |
 | `fix:` / `chore:` / `docs:` / otros | **PATCH** | `fix(promotion): corregir cascade null` |
 
+**Por qué `PREV_TAG` usa `HEAD^`**: `git describe --tags --abbrev=0 HEAD` devolvería el tag del commit actual si ya está tagueado, produciendo un rango vacío (`v1.0.42..v1.0.42`). Usar `HEAD^` garantiza que se busca el tag anterior al commit actual, capturando todos los commits del release.
+
+**`git tag || true`**: el comando `git tag` falla con exit code 128 si el tag ya existe (re-ejecución del pipeline). El `|| true` evita que el pipeline aborte; la lógica de semver garantiza que la versión calculada es siempre única entre builds.
+
+**Limitación**: el tag se crea localmente en el workspace de Jenkins (`git tag vX.Y.Z`). No se hace `git push --tags` al repositorio remoto. En un entorno real, este paso requiere credenciales SSH/HTTPS configuradas en Jenkins para empujar al remote. Las Release Notes generadas (`release-notes-vX.Y.Z.md`) se archivan como artefacto del build.
+
 El tag Git ligero creado en cada release permite:
 - `git log v1.0.41..v1.0.42` — ver exactamente qué entró en cada release
 - `git checkout v1.0.41` — recrear el estado de cualquier release anterior
@@ -675,7 +958,25 @@ El tag Git ligero creado en cada release permite:
 
 ## 8.1 Análisis Estático con SonarQube
 
-SonarQube se levanta con un Compose dedicado (`sonarqube/docker-compose.sonarqube.yml`, puerto 9000). El plugin `org.sonarqube` en `build.gradle.kts` y JaCoCo por subproyecto permiten analizar los 8 servicios en una sola ejecución: `./gradlew sonar`.
+SonarQube se levanta con un Compose dedicado:
+
+```bash
+docker compose -f sonarqube/docker-compose.sonarqube.yml up -d
+# → SonarQube disponible en http://localhost:9000
+# → Cambiar contraseña en primer login (admin/admin → nueva contraseña)
+# → Crear token en My Account → Security → Generate Token
+```
+
+El plugin `org.sonarqube` en `build.gradle.kts` y JaCoCo por subproyecto permiten analizar los 8 servicios en una sola ejecución: `./gradlew sonar`.
+
+### Checklist de configuración en Jenkins
+
+1. **Plugin SonarQube Scanner**: Manage Jenkins → Plugins → SonarQube Scanner → instalar
+2. **Plugin Email Extension**: Manage Jenkins → Plugins → Email Extension Plugin → instalar
+3. **Servidor SonarQube**: Manage Jenkins → Configure System → SonarQube servers → nombre `sonarqube`, URL `http://host.docker.internal:9000`
+4. **Credencial `sonar-token`**: Manage Jenkins → Credentials → Secret Text → ID `sonar-token`, valor = token generado en SonarQube
+5. **Configuración SMTP**: Manage Jenkins → Configure System → Extended E-mail Notification → SMTP server `localhost`, puerto `1025` (MailHog)
+6. **Webhook SonarQube**: En SonarQube → Administration → Webhooks → URL `http://host.docker.internal:8080/sonarqube-webhook/`
 
 **Configuración en Jenkins**: plugin SonarQube Scanner + servidor `sonarqube` en `Configure System` + credencial `sonar-token` + webhook `http://host.docker.internal:8080/sonarqube-webhook/`.
 
@@ -707,6 +1008,18 @@ MailHog (`mailhog:1025`) actúa como relay SMTP de desarrollo sin credenciales n
 | Fallo en dev/stage | devops@circleguard.local | `[FALLO] <job> #<N> (<branch>)` |
 | Build inestable (QG degradado) | devops@circleguard.local | `[INESTABLE] <job> #<N>` |
 | Fallo en producción | devops@circleguard.local | `[FALLO] PRODUCCION <job> #<N>` |
+
+## 8.5 Archivos modificados/creados en esta entrega
+
+| Archivo | Tipo | Descripción |
+|---|---|---|
+| `sonarqube/docker-compose.sonarqube.yml` | Nuevo | SonarQube + PostgreSQL para análisis estático |
+| `scripts/semver.sh` | Nuevo | Versionado semántico desde Conventional Commits |
+| `Jenkinsfile.security` | Nuevo | Pipeline nocturno (`H 2 * * *`) Trivy + ZAP |
+| `Jenkinsfile.dev` | Modificado | +Mobile Tests, +Coverage Reports, +Trivy IaC |
+| `Jenkinsfile.stage` | Modificado | +Mobile Tests, +Coverage Reports, +Trivy IaC |
+| `Jenkinsfile.master` | Modificado | +Release Notes, +OWASP ZAP, Trivy `exit-code=1` |
+| `build.gradle.kts` | Modificado | Plugin `org.sonarqube` + JaCoCo por subproyecto |
 
 ---
 
@@ -778,6 +1091,21 @@ kubectl scale deployment --all -n circleguard --replicas=1
 ```
 
 Script automatizado: `bash scripts/rollback.sh <servicio|all> [--to-revision N]`
+
+**Interfaz de `scripts/rollback.sh`**:
+
+```bash
+# Rollback del servicio auth al estado anterior
+bash scripts/rollback.sh auth-service
+
+# Rollback de todos los servicios a revisión específica
+bash scripts/rollback.sh all --to-revision 2
+
+# Re-escalar si post.always dejó réplicas en 0
+bash scripts/rollback.sh all --scale-up
+```
+
+El script acepta el nombre corto del servicio (sin prefijo `circleguard-`) o `all` para operar sobre los 8 deployments del namespace `circleguard`. El flag `--to-revision N` pasa directamente a `kubectl rollout undo --to-revision`.
 
 ### Plan B — Rollback por versión (tag Git anterior)
 
@@ -853,6 +1181,39 @@ MANAGEMENT_ZIPKIN_TRACING_ENDPOINT:        "http://zipkin-svc:9411/api/v2/spans"
 
 Cada servicio emite logs en formato JSON a stdout usando `logback-spring.xml` con `LogstashEncoder`. El JSON incluye `traceId`, `spanId` y `parentId` inyectados por Micrometer Tracing.
 
+**Configuración `logback-spring.xml`** (idéntica en los 8 servicios en `src/main/resources/`):
+
+```xml
+<configuration>
+  <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+      <includeMdcKeyName>traceId</includeMdcKeyName>
+      <includeMdcKeyName>spanId</includeMdcKeyName>
+      <includeMdcKeyName>parentId</includeMdcKeyName>
+    </encoder>
+  </appender>
+  <root level="INFO">
+    <appender-ref ref="JSON"/>
+  </root>
+</configuration>
+```
+
+**Ejemplo de log emitido por `auth-service`**:
+
+```json
+{
+  "@timestamp": "2024-06-08T14:23:11.234Z",
+  "level": "INFO",
+  "logger_name": "com.circleguard.auth.controller.LoginController",
+  "message": "Login attempt for user: jdoe",
+  "traceId": "c4fb6a2e3b1d4f8a",
+  "spanId":  "a1b2c3d4e5f6a7b8",
+  "service": "circleguard-auth-service"
+}
+```
+
+El campo `traceId` permite correlacionar este log con la traza en Zipkin: `GET http://localhost:30093/api/v2/trace/c4fb6a2e3b1d4f8a`.
+
 **Flujo**: pods → stdout JSON → CRI/containerd → Filebeat DaemonSet → Logstash → Elasticsearch (índice `circleguard-logs-YYYY.MM.dd`) → Kibana.
 
 Kibana: patrón de índice `circleguard-logs-*`, campo de tiempo `@timestamp`. Buscar por `traceId` para correlacionar logs con trazas.
@@ -907,7 +1268,21 @@ readinessProbe:
 
 `startupProbe.failureThreshold: 30` con `periodSeconds: 5` da 170 segundos totales para el arranque. Sin `startupProbe`, `livenessProbe` mataría el pod antes de que Spring Boot termine de inicializar el contexto con Neo4j + Redis + Kafka.
 
-## 10.7 Métricas de Negocio (Custom Counters)
+## 10.7 Métricas técnicas (automáticas)
+
+Con `micrometer-registry-prometheus`, Spring Boot registra automáticamente:
+
+| Métrica | Descripción |
+|---|---|
+| `http_server_requests_seconds{uri,method,status}` | Latencia y tasa de peticiones HTTP |
+| `jvm_memory_used_bytes{area,id}` | Memoria JVM usada |
+| `jvm_memory_max_bytes{area,id}` | Memoria JVM máxima |
+| `jvm_threads_live_threads` | Hilos JVM activos |
+| `jvm_gc_pause_seconds` | Pausas de Garbage Collector |
+| `process_cpu_usage` | CPU del proceso |
+| `up` | Estado del scrape target (1=UP, 0=DOWN) |
+
+## 10.8 Métricas de Negocio (Custom Counters)
 
 | Métrica | Tag(s) | Servicio |
 |---|---|---|
@@ -919,6 +1294,81 @@ readinessProbe:
 | `circleguard_identity_mappings_total` | — | identity-service |
 | `circleguard_file_uploads_total` | `result=success\|failure` | file-service |
 | `circleguard_dashboard_queries_total` | `endpoint=trends\|health-board\|summary\|...` | dashboard-service |
+
+**Consultas PromQL de referencia**:
+
+```promql
+# Tasa de logins exitosos por minuto
+rate(circleguard_logins_total{result="success"}[5m])
+
+# Encuestas enviadas en la última hora
+increase(circleguard_surveys_submitted_total[1h])
+
+# Distribución de estados de salud actualizados hoy
+sum by (status) (increase(circleguard_health_status_updates_total[24h]))
+
+# Latencia p99 del gateway (validación QR)
+histogram_quantile(0.99, rate(http_server_requests_seconds_bucket{job="gateway-service"}[5m]))
+```
+
+## 10.9 Puertos del stack de observabilidad por entorno
+
+| Componente | Dev (31xxx) | Stage (32xxx) | Prod (30xxx) |
+|---|---|---|---|
+| Prometheus | 31090 | 32090 | 30090 |
+| Grafana | 31091 | 32091 | 30091 |
+| Kibana | 31092 | 32092 | 30092 |
+| Zipkin | 31093 | 32093 | 30093 |
+| Alertmanager | 31094 | 32094 | 30094 |
+
+## 10.10 Archivos modificados/creados en esta entrega
+
+| Archivo | Tipo | Descripción |
+|---|---|---|
+| `services/*/src/main/resources/logback-spring.xml` (×8) | Nuevo | JSON logging con LogstashEncoder + traceId/spanId |
+| `k8s/infra/01-configmap.yml` | Modificado | +6 vars `MANAGEMENT_*` para actuator y tracing |
+| `k8s/infra/10-prometheus.yml` | Nuevo | Prometheus + reglas de alerta |
+| `k8s/infra/11-alertmanager.yml` | Nuevo | Alertmanager → MailHog SMTP |
+| `k8s/infra/12-elasticsearch.yml` | Nuevo | Elasticsearch single-node |
+| `k8s/infra/13-logstash.yml` | Nuevo | Logstash: beats → Elasticsearch |
+| `k8s/infra/14-kibana.yml` | Nuevo | Kibana UI |
+| `k8s/infra/15-filebeat.yml` | Nuevo | Filebeat DaemonSet + RBAC |
+| `k8s/infra/16-zipkin.yml` | Nuevo | Zipkin in-memory |
+| `k8s/infra/17-grafana.yml` | Nuevo | Grafana + dashboards JSON |
+| `terraform/modules/k8s-prometheus/` | Nuevo | Módulo Terraform Prometheus |
+| `terraform/modules/k8s-grafana/` | Nuevo | Módulo Terraform Grafana |
+| `terraform/modules/k8s-elasticsearch/` | Nuevo | Módulo Terraform Elasticsearch |
+| `terraform/modules/k8s-logstash/` | Nuevo | Módulo Terraform Logstash |
+| `terraform/modules/k8s-kibana/` | Nuevo | Módulo Terraform Kibana |
+| `terraform/modules/k8s-filebeat/` | Nuevo | Módulo Terraform Filebeat DaemonSet |
+| `terraform/modules/k8s-zipkin/` | Nuevo | Módulo Terraform Zipkin |
+| `terraform/modules/k8s-microservice/main.tf` | Modificado | Probes HTTP startup/liveness/readiness |
+| `build.gradle.kts` | Modificado | +5 dependencias Micrometer/Zipkin en `subprojects` |
+
+## 10.11 Checklist de validación del stack de observabilidad
+
+```bash
+# 1. Todos los pods Running en el namespace
+kubectl get pods -n circleguard
+
+# 2. Prometheus scrapea los 8 servicios (todos UP=1)
+curl -s 'http://localhost:30090/api/v1/query?query=up' | \
+  python3 -c "import sys,json; [print(r['metric']['job'], r['value'][1]) for r in json.load(sys.stdin)['data']['result']]"
+
+# 3. Métricas de negocio disponibles
+curl -s http://localhost:30087/actuator/prometheus | grep circleguard_gate
+
+# 4. Health probes responden OK
+curl http://localhost:30087/actuator/health/readiness
+# → {"status":"UP"}
+
+# 5. Trazas en Zipkin
+curl http://localhost:30093/api/v2/services
+# → ["circleguard-auth-service","circleguard-gateway-service",...]
+
+# 6. Logs en Elasticsearch
+curl http://localhost:30092  # Kibana accesible
+```
 
 ---
 
@@ -946,6 +1396,20 @@ Los valores en `k8s/infra/02-secrets.yml` (base64 hardcodeado) son solo para ent
 
 **ServiceAccounts por microservicio**: cada uno de los 8 microservicios tiene su propia `ServiceAccount` con `automountServiceAccountToken: false`. Las apps Spring Boot no consumen la API de Kubernetes — montar el token del SA `default` es superficie de ataque innecesaria.
 
+**Código Terraform de las ServiceAccounts**:
+
+```hcl
+# terraform/modules/k8s-rbac/main.tf
+resource "kubernetes_service_account_v1" "microservices" {
+  for_each = toset(var.service_names)
+  metadata {
+    name      = "${each.key}-sa"
+    namespace = var.namespace
+  }
+  automount_service_account_token = false
+}
+```
+
 **Roles namespaced**:
 
 | Rol | Recursos | Verbos | Propósito |
@@ -963,10 +1427,94 @@ Ambos Roles son `kind: Role` (namespaced, no `ClusterRole`). No incluyen acceso 
 
 **Ingress**: el tráfico HTTPS a `circleguard.local` es terminado en ingress-nginx y enrutado como HTTP interno al `gateway-service`. Los demás servicios no están expuestos externamente.
 
+**Código Terraform del certificado TLS y del Ingress**:
+
+```hcl
+# terraform/modules/k8s-ingress/main.tf
+resource "tls_private_key" "circleguard" { algorithm = "RSA"; rsa_bits = 2048 }
+
+resource "tls_self_signed_cert" "circleguard" {
+  private_key_pem       = tls_private_key.circleguard.private_key_pem
+  subject               { common_name = var.ingress_host; organization = "CircleGuard" }
+  dns_names             = [var.ingress_host]
+  validity_period_hours = 8760
+  allowed_uses          = ["key_encipherment", "digital_signature", "server_auth"]
+}
+
+resource "kubernetes_secret_v1" "tls" {
+  type = "kubernetes.io/tls"
+  data = {
+    "tls.crt" = tls_self_signed_cert.circleguard.cert_pem
+    "tls.key" = tls_private_key.circleguard.private_key_pem
+  }
+}
+
+resource "kubernetes_ingress_v1" "gateway" {
+  spec {
+    ingress_class_name = "nginx"
+    tls { hosts = ["circleguard.local"]; secret_name = "circleguard-tls" }
+    rule {
+      host = var.ingress_host
+      http { path { path = "/()(.*)"
+        backend { service { name = "gateway-service-svc"; port { number = 8087 } } }
+      } }
+    }
+  }
+}
+```
+
+**NodePorts HTTPS por entorno**:
+
+| Entorno | NodePort HTTPS | URL |
+|---|---|---|
+| Producción (`circleguard`) | 30443 | `https://circleguard.local:30443` |
+| Dev (`circleguard-dev`) | 31443 | `https://circleguard.local:31443` |
+| Stage (`circleguard-stage`) | 32443 | `https://circleguard.local:32443` |
+
 ```bash
 # Probar TLS local (acepta cert self-signed)
 echo "127.0.0.1 circleguard.local" | sudo tee -a /etc/hosts
 curl -k -H 'Host: circleguard.local' https://localhost:31443/
+```
+
+## 11.5 Archivos modificados/creados en esta entrega
+
+| Archivo | Tipo | Descripción |
+|---|---|---|
+| `k8s/infra/18-rbac.yml` | Nuevo | 8 ServiceAccounts + 2 Roles + RoleBindings |
+| `k8s/infra/19-ingress.yml` | Nuevo | ingress-nginx NodePort + Secret TLS + Ingress HTTPS |
+| `terraform/modules/k8s-rbac/` | Nuevo | Módulo Terraform: SA, Roles, RoleBindings |
+| `terraform/modules/k8s-ingress/` | Nuevo | Módulo Terraform: ingress-nginx Helm + cert TLS + Ingress |
+| `terraform/envs/{dev,stage,prod}/main.tf` | Modificado | +módulos `k8s-rbac` y `k8s-ingress` |
+| `Jenkinsfile.security` | Nuevo | Pipeline cron nocturno `H 2 * * *`: Trivy imagen + IaC |
+| `Jenkinsfile.dev` | Modificado | +stage `Trivy IaC Scan` (`exit-code=0`) |
+| `Jenkinsfile.stage` | Modificado | +stage `Trivy IaC Scan` (`exit-code=0`) |
+| `Jenkinsfile.master` | Modificado | +stage `Trivy IaC Scan` (`exit-code=1` bloquea) |
+| `.trivyignore` | Nuevo | CVEs aceptados con comentarios de justificación |
+| `k8s/services/15-auth-service.yml` | Modificado | `serviceAccountName: auth-service-sa` |
+| `k8s/services/16-identity-service.yml` | Modificado | `serviceAccountName: identity-service-sa` |
+| `terraform/envs/{dev,stage,prod}/main.tf` | Modificado | Secretos LDAP/Vault eliminados del `extra_env` inline |
+
+## 11.6 Checklist de validación de seguridad
+
+```bash
+# 1. ServiceAccounts creadas (sin automount)
+kubectl get sa -n circleguard | grep -E "auth|identity|gateway|form|file|dashboard|notification|promotion"
+
+# 2. Roles creados
+kubectl get role -n circleguard
+
+# 3. TLS activo en ingress
+echo "127.0.0.1 circleguard.local" >> /etc/hosts
+curl -k -s -o /dev/null -w "%{http_code}" https://circleguard.local:30443/
+# → 200, 401, 403 (no 000)
+
+# 4. Trivy sin HIGH/CRITICAL no documentados
+cat .trivyignore
+
+# 5. Secretos no expuestos en texto plano en manifests de servicio
+kubectl get deployment circleguard-auth-service -n circleguard -o yaml | grep -i password
+# → solo referencias a secretRef, no valores en texto plano
 ```
 
 ---
@@ -977,7 +1525,52 @@ curl -k -H 'Host: circleguard.local' https://localhost:31443/
 
 El entorno de desarrollo usa Docker Desktop con LocalStack. Costo operativo en desarrollo: **$0**.
 
-## 12.2 Totales del clúster (recursos Kubernetes)
+## 12.2 Recursos por microservicio
+
+| Servicio | Réplicas | CPU request | CPU limit | Mem request | Mem limit |
+|---|---|---|---|---|---|
+| auth-service | 1 | 100m | 500m | 256Mi | 512Mi |
+| identity-service | 1 | 100m | 500m | 256Mi | 512Mi |
+| file-service | 1 | 100m | 500m | 256Mi | 512Mi |
+| gateway-service | 1 | 100m | 500m | 256Mi | 512Mi |
+| dashboard-service | 1 | 100m | 500m | 256Mi | 512Mi |
+| form-service | 1 | 100m | 500m | 256Mi | 512Mi |
+| notification-service | 1 | 100m | 500m | 256Mi | 512Mi |
+| promotion-service | 1 | 500m | 2000m | 1024Mi | 2048Mi |
+
+`promotion-service` es más intensivo: mantiene el grafo Neo4j de contactos en memoria y procesa eventos Kafka en tiempo real.
+
+**Subtotal microservicios**: ~1.3 vCPU requests, ~3.75 Gi RAM requests.
+
+## 12.3 Recursos del stack de observabilidad
+
+| Componente | Réplicas | CPU request | CPU limit | Mem request | Mem limit |
+|---|---|---|---|---|---|
+| Elasticsearch | 1 | 200m | 1000m | 1024Mi | 2048Mi |
+| Logstash | 1 | 100m | 500m | 256Mi | 512Mi |
+| Kibana | 1 | 100m | 500m | 256Mi | 512Mi |
+| Filebeat (DaemonSet) | 1/nodo | 100m | 500m | 256Mi | 512Mi |
+| Prometheus | 1 | 100m | 500m | 256Mi | 512Mi |
+| Grafana | 1 | 100m | 500m | 128Mi | 256Mi |
+| Zipkin | 1 | 100m | 500m | 256Mi | 512Mi |
+| Alertmanager | 1 | 100m | 200m | 128Mi | 256Mi |
+
+**Subtotal observabilidad**: ~1.0 vCPU requests, ~2.6 Gi RAM requests.
+
+## 12.4 Recursos de infraestructura de datos
+
+| Componente | Réplicas | CPU request | CPU limit | Mem request | Mem limit |
+|---|---|---|---|---|---|
+| PostgreSQL | 1 | 250m | 500m | 256Mi | 512Mi |
+| Neo4j | 1 | 500m | 1000m | 512Mi | 1024Mi |
+| Kafka | 1 | 250m | 500m | 512Mi | 1024Mi |
+| Zookeeper | 1 | 100m | 200m | 256Mi | 512Mi |
+| Redis | 1 | 100m | 200m | 128Mi | 256Mi |
+| OpenLDAP | 1 | 100m | 200m | 128Mi | 256Mi |
+
+**Subtotal datos**: ~1.3 vCPU requests, ~1.8 Gi RAM requests.
+
+## 12.5 Totales del clúster (recursos Kubernetes)
 
 | Capa | CPU requests | RAM requests |
 |---|---|---|
@@ -986,7 +1579,7 @@ El entorno de desarrollo usa Docker Desktop con LocalStack. Costo operativo en d
 | Infraestructura de datos (6 componentes) | ~1.3 vCPU | ~1.8 Gi |
 | **Total** | **~3.6 vCPU** | **~8.15 Gi** |
 
-## 12.3 Estimación en AWS (us-east-1, precios aprox. junio 2026)
+## 12.6 Estimación en AWS (us-east-1, precios aprox. junio 2026)
 
 | Opción | Configuración | Precio/mes |
 |---|---|---|
@@ -994,7 +1587,7 @@ El entorno de desarrollo usa Docker Desktop con LocalStack. Costo operativo en d
 | **B — Multi-nodo prod** | 4 EC2 t3.xlarge/large + EKS + storage + S3 + Secrets Manager | ~$515 |
 | **C — Desarrollo local** | Docker Desktop + LocalStack | **$0** |
 
-## 12.4 Optimizaciones de costo
+## 12.7 Optimizaciones de costo
 
 | Estrategia | Ahorro estimado |
 |---|---|
@@ -1124,3 +1717,9 @@ cd terraform/envs/prod && terraform destroy -auto-approve
 # O solo un servicio
 kubectl delete deployment circleguard-auth-service -n circleguard
 ```
+
+---
+
+# Video de Demostración
+
+https://youtu.be/3Z8f4QA5kFA

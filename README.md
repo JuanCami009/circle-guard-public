@@ -1,6 +1,8 @@
 # CircleGuard - Taller 2: Pruebas y Lanzamiento
 
-**Video de evidencia:** https://youtu.be/D9iUHjesDdI
+**Video de evidencia (Taller 2):** https://youtu.be/D9iUHjesDdI
+
+**Video de evidencia (Proyecto Final):** https://youtu.be/3Z8f4QA5kFA
 
 ---
 
@@ -65,6 +67,7 @@ Implementación completa de las cuatro capacidades de seguridad sobre la arquite
 | [`docs/10-punto8-seguridad.md`](docs/10-punto8-seguridad.md) | Seguridad: Trivy, secretos, RBAC, TLS (Punto 8 Proyecto Final) |
 | [`docs/11-costos-infraestructura.md`](docs/11-costos-infraestructura.md) | Estimacion de costos en AWS vs entorno local |
 | [`docs/12-manual-operaciones.md`](docs/12-manual-operaciones.md) | Manual de operaciones: accesos, despliegue, rollback, troubleshooting |
+| [`InformeFinal.md`](InformeFinal.md) | Informe final consolidado del Proyecto Final |
 
 ---
 

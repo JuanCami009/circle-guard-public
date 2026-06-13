@@ -119,3 +119,4 @@ Stack completo provisionado vía Terraform (`terraform/modules/`) y manifests es
 | [`docs/10-punto8-seguridad.md`](docs/10-punto8-seguridad.md) | Seguridad: Trivy, secretos, RBAC, TLS |
 | [`docs/11-costos-infraestructura.md`](docs/11-costos-infraestructura.md) | Estimación de costos AWS vs local |
 | [`docs/12-manual-operaciones.md`](docs/12-manual-operaciones.md) | Manual de operaciones y troubleshooting |
+| [`InformeFinal.md`](InformeFinal.md) | Informe final consolidado del Proyecto Final |
